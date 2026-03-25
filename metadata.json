@@ -1,0 +1,7 @@
+{
+  "name": "PRISMA SERANG",
+  "description": "Dashboard administrasi komprehensif untuk membuat, mengelola, dan mengarsipkan SPM, SPP, dan Berita Acara untuk Desa Serang.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

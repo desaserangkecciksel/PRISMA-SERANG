@@ -17,10 +17,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // --- DATABASE CONFIGURATION ---
 // Fill these details from your Hostinger Control Panel (hPanel)
-$db_host = "srv1151.hstgr.io"; // Usually 'localhost' on Hostinger
-$db_user = "u581740370_admin_apbdes"; // Your MySQL Username
-$db_pass = "Serang2026";    // Your MySQL Password
-$db_name = "u581740370_db_apbdes";   // Your Database Name
+$db_host = "localhost";
+$db_user = "u123456789_user"; // Change this
+$db_pass = "your_password";    // Change this
+$db_name = "u123456789_db";   // Change this
 
 // Connect to MySQL
 $conn = new mysqli($db_host, $db_user, $db_pass, $db_name);

@@ -155,6 +155,21 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, isOpen, 
         </nav>
 
         {/* Footer (Logout & Cloud Status) */}
+        <div className={`p-4 border-t border-white/10 flex flex-col gap-3 transition-all duration-300 ${!isOpen && 'items-center'}`}>
+          {/* Cloud Status Indicator */}
+          <div 
+            title={dbWarning || dbError || (isCloudConnected ? "Connected to MySQL Cloud" : "Checking connection...")}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-help
+            ${isCloudConnected === true ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 
+              isCloudConnected === false ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 
+              'bg-slate-500/20 text-slate-400 border border-slate-500/30'}
+            ${!isOpen && 'justify-center w-10 h-10 p-0'}
+          `}>
+            {isCloudConnected === true ? <Cloud size={14} /> : <CloudOff size={14} />}
+            {isOpen && (
+              <span>{isCloudConnected === true ? 'Cloud Connected' : isCloudConnected === false ? 'Cloud Offline' : 'Checking...'}</span>
+            )}
+          </div>
 
           <button 
             onClick={onLogout}

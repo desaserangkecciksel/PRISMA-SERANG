@@ -672,23 +672,23 @@ export const generateTandaTerima = (data: LetterData, _settings: AppSettings) =>
     y = 30;
   }
 
-  // Right-aligned PPKD signatory block
+  // Right-aligned PKA signatory block
   const rightX = PAGE_WIDTH - 65;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.text(`${data.place}, ${formatDate(data.date)}`, rightX, y, { align: 'center' });
   y += 6;
-  doc.text('Pelaksana Pengelola Keuangan Desa', rightX, y, { align: 'center' });
+  doc.text('Pelaksana Kegiatan Anggaran', rightX, y, { align: 'center' });
   y += 4;
-  doc.text('(PPKD)', rightX, y, { align: 'center' });
+  doc.text('(PKA)', rightX, y, { align: 'center' });
   y += 24;
   
   doc.setFont('helvetica', 'bold');
-  const ppkdName = (data.ppkd || 'YUSUF HAIDIR').toUpperCase();
-  doc.text(ppkdName, rightX, y, { align: 'center' });
-  const ppkdWidth = doc.getTextWidth(ppkdName);
+  const pkaName = (data.pkaSignatory || data.pkaName || 'REZI RAHMAN DISPINDRA').toUpperCase();
+  doc.text(pkaName, rightX, y, { align: 'center' });
+  const pkaWidth = doc.getTextWidth(pkaName);
   doc.setLineWidth(0.3);
-  doc.line(rightX - ppkdWidth / 2, y + 1, rightX + ppkdWidth / 2, y + 1);
+  doc.line(rightX - pkaWidth / 2, y + 1, rightX + pkaWidth / 2, y + 1);
 
   doc.save(`Tanda-Terima-${data.letterNumber.replace(/\//g, '-')}.pdf`);
 };

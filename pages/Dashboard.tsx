@@ -1,9 +1,40 @@
 
 import React, { useMemo, useEffect, useState } from 'react';
-import { FileText, CheckCircle, Wallet, TrendingUp, Landmark, Calculator, Loader2, Percent, Activity, ArrowUpRight, CreditCard } from 'lucide-react';
+import { FileText, CheckCircle, Wallet, TrendingUp, Landmark, Calculator, Loader2, Percent, Activity, ArrowUpRight, CreditCard, Calendar } from 'lucide-react';
 import { StorageService } from '../services/storageService';
 import { LetterData, AppSettings } from '../types';
 import { INITIAL_SETTINGS } from '../constants';
+import { 
+  ResponsiveContainer, 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip as RechartsTooltip, 
+  PieChart, 
+  Pie, 
+  Cell
+} from 'recharts';
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-2xl shadow-xl text-xs">
+        <p className="font-bold text-slate-800 dark:text-slate-100 mb-1.5">{label}</p>
+        <div className="space-y-1">
+          {payload.map((item: any, index: number) => (
+            <p key={index} className="font-semibold flex items-center" style={{ color: item.color || item.fill }}>
+              <span className="w-2.5 h-2.5 rounded-full mr-1.5 inline-block" style={{ backgroundColor: item.color || item.fill }}></span>
+              {item.name}: {item.value} Surat
+            </p>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
 interface DashboardProps {
   onNavigate: (page: string) => void;
@@ -143,6 +174,89 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   // Total Dana Keluar = Net Transfer + Pajak Terbayar
   const totalCashOut = stats.totalNetTransfer + stats.totalPaidTax;
 
+  const currentMonthStats = useMemo(() => {
+    const now = new Date();
+    const currentMonthIndex = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    const docsThisMonthList = letters.filter(l => {
+      const d = new Date(l.date || l.createdAt);
+      return !isNaN(d.getTime()) && d.getMonth() === currentMonthIndex && d.getFullYear() === currentYear;
+    });
+
+    const totalThisMonth = docsThisMonthList.length;
+    const completedThisMonth = docsThisMonthList.filter(l => l.status === 'saved' || l.status === 'archived').length;
+    const draftsThisMonth = docsThisMonthList.filter(l => l.status === 'draft').length;
+
+    const indonesianMonths = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    const monthName = indonesianMonths[currentMonthIndex];
+
+    return {
+      total: totalThisMonth,
+      completed: completedThisMonth,
+      drafts: draftsThisMonth,
+      monthName,
+      year: currentYear
+    };
+  }, [letters]);
+
+  const monthlyTrendData = useMemo(() => {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+    ];
+    
+    const data = months.map((month) => ({
+      name: month,
+      'Jumlah Dokumen': 0,
+      'Selesai (Saved)': 0,
+      'Draft': 0
+    }));
+
+    letters.forEach(letter => {
+      const d = new Date(letter.date || letter.createdAt);
+      if (!isNaN(d.getTime())) {
+          const year = d.getFullYear();
+          if (year === displayYear) {
+              const monthIndex = d.getMonth();
+              if (monthIndex >= 0 && monthIndex < 12) {
+                  data[monthIndex]['Jumlah Dokumen'] += 1;
+                  if (letter.status === 'saved' || letter.status === 'archived') {
+                      data[monthIndex]['Selesai (Saved)'] += 1;
+                  } else if (letter.status === 'draft') {
+                      data[monthIndex]['Draft'] += 1;
+                  }
+              }
+          }
+      }
+    });
+
+    return data;
+  }, [letters, displayYear]);
+
+  const statusDistributionData = useMemo(() => {
+    const counts = {
+      saved: 0,
+      archived: 0,
+      draft: 0
+    };
+
+    letters.forEach(l => {
+      if (l.status === 'saved') counts.saved += 1;
+      else if (l.status === 'archived') counts.archived += 1;
+      else if (l.status === 'draft') counts.draft += 1;
+    });
+
+    return [
+      { name: 'Selesai (Saved)', value: counts.saved, color: '#10b981' },
+      { name: 'Terarsip', value: counts.archived, color: '#3b82f6' },
+      { name: 'Draft', value: counts.draft, color: '#f59e0b' },
+    ].filter(item => item.value > 0);
+  }, [letters]);
+
   const statCards = [
     { 
       label: 'Total Dokumen', 
@@ -279,6 +393,199 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Administrasi & Aktivitas Dokumen Section with Recharts */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 shadow-lg border border-slate-100 dark:border-slate-700 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 dark:border-slate-700 pb-4">
+          <div>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-white flex items-center">
+              <Activity className="mr-3 text-teal-600 dark:text-teal-400" size={28} />
+              Aktivitas Administrasi & Ringkasan Dokumen
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              Visualisasi kuantitas pembuatan berkas dan dinamika administratif di Desa Serang.
+            </p>
+          </div>
+          <div className="flex h-fit items-center px-4 py-2 bg-teal-50 dark:bg-teal-950/30 text-teal-800 dark:text-teal-200 border border-teal-100 dark:border-teal-900/50 rounded-xl font-bold text-sm">
+            <Calendar className="mr-2" size={16} />
+            Bulan Ini: {currentMonthStats.monthName} {currentMonthStats.year}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Chart 1: Tren Bulanan (Span 2) */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h4 className="text-lg font-bold text-slate-800 dark:text-white">
+                  Tren Pembuatan Surat Bulanan ({displayYear})
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Dinamika bulanan pembuatan surat (Selesai vs Draft) sepanjang tahun anggaran.
+                </p>
+              </div>
+              <div className="flex items-center space-x-4 text-xs font-semibold">
+                <span className="flex items-center">
+                  <span className="w-3 h-3 rounded bg-teal-500 mr-1.5 inline-block"></span>
+                  Selesai
+                </span>
+                <span className="flex items-center">
+                  <span className="w-3 h-3 rounded bg-amber-500 mr-1.5 inline-block"></span>
+                  Draft
+                </span>
+              </div>
+            </div>
+
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={monthlyTrendData}
+                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="colorSaved" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorDraft" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" className="dark:stroke-slate-700/50" />
+                  <XAxis 
+                    dataKey="name" 
+                    tickLine={false} 
+                    axisLine={false}
+                    tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }}
+                  />
+                  <YAxis 
+                    tickLine={false} 
+                    axisLine={false}
+                    tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }}
+                  />
+                  <RechartsTooltip content={<CustomTooltip />} />
+                  <Area 
+                    type="monotone" 
+                    name="Selesai (Saved)"
+                    dataKey="Selesai (Saved)" 
+                    stroke="#14b8a6" 
+                    strokeWidth={2.5} 
+                    fillOpacity={1} 
+                    fill="url(#colorSaved)" 
+                  />
+                  <Area 
+                    type="monotone" 
+                    name="Draft"
+                    dataKey="Draft" 
+                    stroke="#f59e0b" 
+                    strokeWidth={2} 
+                    fillOpacity={0.8} 
+                    fill="url(#colorDraft)" 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Card 2: Bulan Ini & Distribusi Status (Span 1) */}
+          <div className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-6 flex flex-col justify-between">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 tracking-wider text-teal-750 uppercase">
+                  Bulan Ini: {currentMonthStats.monthName}
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded bg-teal-150 text-[10px] font-bold text-teal-800 dark:text-teal-300 dark:bg-teal-900/40">
+                  AKTIF
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-750 shadow-sm">
+                  <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-450">Total Dokumen Baru</p>
+                  <p className="text-2xl font-black text-slate-800 dark:text-white mt-1">
+                    {currentMonthStats.total}
+                  </p>
+                  <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-1 leading-none">Berkas terbuat</p>
+                </div>
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-750 shadow-sm">
+                  <p className="text-[10px] font-semibold text-teal-650 dark:text-teal-400">Berkas Selesai</p>
+                  <p className="text-2xl font-black text-teal-700 dark:text-teal-300 mt-1">
+                    {currentMonthStats.completed}
+                  </p>
+                  <p className="text-[9px] text-teal-600/70 dark:text-teal-400/50 mt-1 leading-none">Status Saved</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Penyebaran Status Dokumen
+                </p>
+                
+                {statusDistributionData.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-455 dark:text-slate-500">
+                    Belum ada data status dokumen.
+                  </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-center gap-4 justify-center">
+                    <div className="w-28 h-28 relative shrink-0">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={statusDistributionData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={30}
+                            outerRadius={45}
+                            paddingAngle={4}
+                            dataKey="value"
+                          >
+                            {statusDistributionData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip formatter={(value) => [`${value} Surat`, 'Jumlah']} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-base font-black text-slate-800 dark:text-white leading-none">
+                          {stats.total}
+                        </span>
+                        <span className="text-[8px] text-slate-400 uppercase tracking-widest font-semibold mt-0.5">
+                          Total
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 w-full space-y-1.5">
+                      {statusDistributionData.map((item, idx) => {
+                        const pct = stats.total > 0 ? ((item.value / stats.total) * 100).toFixed(0) : '0';
+                        return (
+                          <div key={idx} className="flex items-center justify-between text-xs">
+                            <span className="flex items-center text-slate-600 dark:text-slate-350 font-medium">
+                              <span className="w-2 h-2 rounded-full mr-2 shrink-0" style={{ backgroundColor: item.color }}></span>
+                              {item.name}
+                            </span>
+                            <span className="font-bold text-slate-800 dark:text-white">
+                              {item.value} ({pct}%)
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Subtle links footer */}
+            <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-3 mt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <span>*Terintegrasi cloud</span>
+              <span className="underline cursor-pointer hover:text-teal-650 text-teal-650 dark:text-teal-400 dark:hover:text-teal-300 font-bold" onClick={() => onNavigate('archive')}>Lihat Detail Arsip</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Budget Section Asymmetric Grid */}

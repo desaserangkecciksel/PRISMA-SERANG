@@ -584,7 +584,7 @@ export const generateTandaTerima = (data: LetterData, _settings: AppSettings) =>
   // Title
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
-  doc.text('TANDA TERIMA PENGHASILAN TAMBAHAN', PAGE_WIDTH / 2, y, { align: 'center' });
+  doc.text('TANDA TERIMA PENGHASILAN', PAGE_WIDTH / 2, y, { align: 'center' });
   y += 5;
   
   // Subtitle

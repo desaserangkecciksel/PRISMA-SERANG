@@ -23,16 +23,35 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, isOpen, 
     const loadSettings = async () => {
         const data = await StorageService.getSettings();
         setSettings(data);
-        // Check cloud connectivity via dedicated status endpoint
+        // Check cloud connectivity via Hostinger PHP API
         try {
-            const response = await fetch('/api/db-status');
-            const status = await response.json();
-            setIsCloudConnected(status.connected);
-            setDbError(status.error);
-            setDbWarning(status.warning);
+            const response = await fetch('https://apbdesdesaserang.id/api.php');
+            if (response.ok) {
+                const status = await response.json();
+                if (status && (status.status === "online" || status.success)) {
+                    setIsCloudConnected(true);
+                    setDbError(null);
+                    setDbWarning(null);
+                } else if (status && status.error) {
+                    setIsCloudConnected(false);
+                    setDbError(status.error);
+                } else {
+                    setIsCloudConnected(true);
+                    setDbError(null);
+                }
+            } else {
+                try {
+                    const status = await response.json();
+                    setIsCloudConnected(false);
+                    setDbError(status.error || `HTTP ${response.status}`);
+                } catch(err) {
+                    setIsCloudConnected(false);
+                    setDbError(`HTTP ${response.status}`);
+                }
+            }
         } catch (e) {
             setIsCloudConnected(false);
-            setDbError("Failed to reach server API");
+            setDbError("Tidak dapat terhubung ke server cloud");
         }
     };
     loadSettings();
@@ -158,7 +177,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, isOpen, 
         <div className={`p-4 border-t border-white/10 flex flex-col gap-3 transition-all duration-300 ${!isOpen && 'items-center'}`}>
           {/* Cloud Status Indicator */}
           <div 
-            title={dbWarning || dbError || (isCloudConnected ? "Connected to MySQL Cloud" : "Checking connection...")}
+            title={dbWarning || dbError || (isCloudConnected ? "Terhubung ke Cloud MySQL" : "Memeriksa koneksi...")}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-help
             ${isCloudConnected === true ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 
               isCloudConnected === false ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 
@@ -167,7 +186,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, isOpen, 
           `}>
             {isCloudConnected === true ? <Cloud size={14} /> : <CloudOff size={14} />}
             {isOpen && (
-              <span>{isCloudConnected === true ? 'Cloud Connected' : isCloudConnected === false ? 'Cloud Offline' : 'Checking...'}</span>
+              <span>{isCloudConnected === true ? 'Cloud Terhubung' : isCloudConnected === false ? 'Cloud Offline' : 'Memeriksa...'}</span>
             )}
           </div>
 

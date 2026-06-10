@@ -581,7 +581,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
             {/* Subtle links footer */}
             <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-3 mt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <span>*Terintegrasi cloud</span>
+              <span></span>
               <span className="underline cursor-pointer hover:text-teal-650 text-teal-650 dark:text-teal-400 dark:hover:text-teal-300 font-bold" onClick={() => onNavigate('archive')}>Lihat Detail Arsip</span>
             </div>
           </div>

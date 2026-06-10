@@ -610,12 +610,12 @@ export const generateTandaTerima = (data: LetterData, _settings: AppSettings) =>
     const employee = employees.find(e => (e.name || '').toLowerCase().trim() === (item.recipientName || '').toLowerCase().trim());
     const position = employee ? employee.position : '-';
     
-    // Custom staggered signature lines matching Indonesian attendance sheets exactly
+    // Custom staggered signature lines without row numbers
     let signatureStr = '';
     if (num % 2 !== 0) {
-      signatureStr = `${num}  ...................................`;
+      signatureStr = '...................................';
     } else {
-      signatureStr = `                  ${num}  ...................................`;
+      signatureStr = '                  ...................................';
     }
 
     return [
@@ -633,7 +633,7 @@ export const generateTandaTerima = (data: LetterData, _settings: AppSettings) =>
       { content: 'NO', styles: { halign: 'center', fontStyle: 'bold' } },
       { content: 'NAMA', styles: { halign: 'center', fontStyle: 'bold' } },
       { content: 'JABATAN', styles: { halign: 'center', fontStyle: 'bold' } },
-      { content: 'JUMLAH\nYANG DITERIMA', styles: { halign: 'center', fontStyle: 'bold' } },
+      { content: 'JUMLAH YANG DITERIMA', styles: { halign: 'center', fontStyle: 'bold' } },
       { content: 'TANDA TANGAN', styles: { halign: 'center', fontStyle: 'bold' } }
     ]],
     body: tableBody,
@@ -651,14 +651,15 @@ export const generateTandaTerima = (data: LetterData, _settings: AppSettings) =>
       fillColor: [255, 255, 255],
       textColor: [0, 0, 0],
       lineColor: [0, 0, 0],
-      lineWidth: 0.2
+      lineWidth: 0.2,
+      valign: 'middle'
     },
     columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 55, halign: 'left' },
-      2: { cellWidth: 42, halign: 'left' },
-      3: { cellWidth: 35, halign: 'right' },
-      4: { cellWidth: 43, halign: 'left' }
+      0: { cellWidth: 12, halign: 'center' },
+      1: { cellWidth: 52, halign: 'left' },
+      2: { cellWidth: 38, halign: 'left' },
+      3: { cellWidth: 38, halign: 'right' },
+      4: { cellWidth: 35, halign: 'left' }
     },
     margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT }
   });

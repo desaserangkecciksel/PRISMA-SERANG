@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { StorageService } from '../services/storageService';
-import { generateSPM, generateSPP, generateBA } from '../services/pdfGenerator';
+import { generateSPM, generateSPP, generateBA, generateTandaTerima } from '../services/pdfGenerator';
 import { FileText, Download, FileSpreadsheet, Trash2, Printer, Archive as ArchiveIcon, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle, Edit, ChevronDown, Search, X, Copy, FileCheck, ChevronLeft, ChevronRight, ListFilter, Loader2, MoreHorizontal, Percent, Wallet, CheckCircle2, XCircle, Clock, CreditCard, FilterX, Calendar } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -891,8 +891,11 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                                                     <button onClick={() => { if(settingsData) generateSPP(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-700 dark:text-slate-200 hover:text-blue-700 dark:hover:text-blue-400 text-xs font-bold flex items-center transition-colors mb-1">
                                                                         <FileText size={14} className="mr-2 text-blue-600 dark:text-blue-400" /> Cetak SPP
                                                                     </button>
-                                                                    <button onClick={() => { if(settingsData) generateBA(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/30 text-slate-700 dark:text-slate-200 hover:text-amber-700 dark:hover:text-amber-400 text-xs font-bold flex items-center transition-colors">
+                                                                    <button onClick={() => { if(settingsData) generateBA(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/30 text-slate-700 dark:text-slate-200 hover:text-amber-700 dark:hover:text-amber-400 text-xs font-bold flex items-center transition-colors mb-1">
                                                                         <FileText size={14} className="mr-2 text-amber-600 dark:text-amber-400" /> Cetak Berita Acara
+                                                                    </button>
+                                                                    <button onClick={() => { if(settingsData) generateTandaTerima(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/30 text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-400 text-xs font-bold flex items-center transition-colors">
+                                                                        <FileText size={14} className="mr-2 text-rose-500 dark:text-rose-400" /> Cetak Tanda Terima
                                                                     </button>
                                                                 </div>
                                                             )}

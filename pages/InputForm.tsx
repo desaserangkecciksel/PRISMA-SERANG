@@ -5,7 +5,7 @@ import { LetterData, TransactionItem, Employee, AppSettings } from '../types';
 import { INITIAL_FORM_DATA, INITIAL_SETTINGS } from '../constants';
 import { StorageService } from '../services/storageService';
 import { BlobService } from '../services/blobService';
-import { generateSPM, generateSPP, generateBA } from '../services/pdfGenerator';
+import { generateSPM, generateSPP, generateBA, generateTandaTerima } from '../services/pdfGenerator';
 import { v4 as uuidv4 } from 'uuid';
 
 const SUB_FIELDS: Record<string, string[]> = {
@@ -407,10 +407,11 @@ const InputForm: React.FC<InputFormProps> = ({ initialData, onBack }) => {
   };
 
   // Function to print directly from success modal
-  const handleDirectPrint = (type: 'SPM' | 'SPP' | 'BA') => {
+  const handleDirectPrint = (type: 'SPM' | 'SPP' | 'BA' | 'TT') => {
       if(type === 'SPM') generateSPM(formData, appSettings);
       if(type === 'SPP') generateSPP(formData, appSettings);
       if(type === 'BA') generateBA(formData, appSettings);
+      if(type === 'TT') generateTandaTerima(formData, appSettings);
   };
 
   const handleDraft = async () => {
@@ -498,18 +499,19 @@ const InputForm: React.FC<InputFormProps> = ({ initialData, onBack }) => {
                         Data berhasil disimpan ke database. Anda dapat langsung mencetak dokumen atau kembali ke menu.
                     </p>
                     
-                    <div className="grid grid-cols-1 gap-3 mb-6">
-                        <button onClick={() => handleDirectPrint('SPM')} className="flex items-center justify-center px-4 py-3 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 font-bold rounded-xl transition-colors border border-teal-200 dark:border-teal-800">
-                            <Printer size={18} className="mr-2" /> Cetak SPM (PDF)
+                    <div className="grid grid-cols-2 gap-3 mb-6">
+                        <button onClick={() => handleDirectPrint('SPM')} className="col-span-2 md:col-span-1 flex items-center justify-center px-4 py-3 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 font-bold rounded-xl transition-colors border border-teal-200 dark:border-teal-800 text-xs">
+                            <Printer size={16} className="mr-2" /> Cetak SPM
                         </button>
-                        <div className="flex gap-3">
-                            <button onClick={() => handleDirectPrint('SPP')} className="flex-1 flex items-center justify-center px-4 py-3 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 font-bold rounded-xl transition-colors border border-blue-200 dark:border-blue-800 text-xs">
-                                <FileText size={16} className="mr-2" /> Cetak SPP
-                            </button>
-                            <button onClick={() => handleDirectPrint('BA')} className="flex-1 flex items-center justify-center px-4 py-3 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 font-bold rounded-xl transition-colors border border-amber-200 dark:border-amber-800 text-xs">
-                                <FileText size={16} className="mr-2" /> Cetak BA
-                            </button>
-                        </div>
+                        <button onClick={() => handleDirectPrint('TT')} className="col-span-2 md:col-span-1 flex items-center justify-center px-4 py-3 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50 font-bold rounded-xl transition-colors border border-rose-200 dark:border-rose-800 text-xs">
+                            <Printer size={16} className="mr-2" /> Cetak Tanda Terima
+                        </button>
+                        <button onClick={() => handleDirectPrint('SPP')} className="col-span-2 md:col-span-1 flex items-center justify-center px-4 py-3 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 font-bold rounded-xl transition-colors border border-blue-200 dark:border-blue-800 text-xs text-left">
+                            <FileText size={16} className="mr-2" /> Cetak SPP
+                        </button>
+                        <button onClick={() => handleDirectPrint('BA')} className="col-span-2 md:col-span-1 flex items-center justify-center px-4 py-3 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 font-bold rounded-xl transition-colors border border-amber-200 dark:border-amber-800 text-xs text-left">
+                            <FileText size={16} className="mr-2" /> Cetak BA
+                        </button>
                     </div>
 
                     <div className="flex gap-3 border-t border-slate-100 dark:border-slate-700 pt-6">

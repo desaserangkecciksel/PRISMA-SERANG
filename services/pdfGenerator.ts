@@ -574,3 +574,121 @@ export const generateBA = (data: LetterData, settings: AppSettings) => {
 
     doc.save(`BA-${data.letterNumber.replace(/\//g, '-')}.pdf`);
 }
+
+export const generateTandaTerima = (data: LetterData, _settings: AppSettings) => {
+  const doc = new jsPDF({ format: [PAGE_WIDTH, PAGE_HEIGHT], unit: 'mm' });
+  
+  // Tanda Terima starts with its centered title directly (no letterhead)
+  let y = 25;
+
+  // Title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('TANDA TERIMA PENGHASILAN TAMBAHAN', PAGE_WIDTH / 2, y, { align: 'center' });
+  y += 5;
+  
+  // Subtitle
+  const source = data.sourceFund || 'PENDAPATAN ASLI DESA (PAD)';
+  const fiscalYear = data.fiscalYear || new Date().getFullYear();
+  doc.text(`DARI SUMBER ${source.toUpperCase()} T.A ${fiscalYear}`, PAGE_WIDTH / 2, y, { align: 'center' });
+  y += 12;
+
+  // Load employee positions synchronously to map recipient names to their Jabatan/Roles
+  let employees: any[] = [];
+  try {
+    const raw = localStorage.getItem('espm_employees_local');
+    if (raw) {
+      employees = JSON.parse(raw);
+    }
+  } catch (e) {
+    console.warn("Failed to load employees local storage data for Tanda Terima lookup", e);
+  }
+
+  // Setup rows
+  const tableBody = (data.items || []).map((item, idx) => {
+    const num = idx + 1;
+    const employee = employees.find(e => (e.name || '').toLowerCase().trim() === (item.recipientName || '').toLowerCase().trim());
+    const position = employee ? employee.position : '-';
+    
+    // Custom staggered signature lines matching Indonesian attendance sheets exactly
+    let signatureStr = '';
+    if (num % 2 !== 0) {
+      signatureStr = `${num}  ...................................`;
+    } else {
+      signatureStr = `                  ${num}  ...................................`;
+    }
+
+    return [
+      num.toString(),
+      item.recipientName.toUpperCase(),
+      position,
+      `Rp ${item.netTransfer.toLocaleString('id-ID')}`,
+      signatureStr
+    ];
+  });
+
+  autoTable(doc, {
+    startY: y,
+    head: [[
+      { content: 'NO', styles: { halign: 'center', fontStyle: 'bold' } },
+      { content: 'NAMA', styles: { halign: 'center', fontStyle: 'bold' } },
+      { content: 'JABATAN', styles: { halign: 'center', fontStyle: 'bold' } },
+      { content: 'JUMLAH\nYANG DITERIMA', styles: { halign: 'center', fontStyle: 'bold' } },
+      { content: 'TANDA TANGAN', styles: { halign: 'center', fontStyle: 'bold' } }
+    ]],
+    body: tableBody,
+    theme: 'grid',
+    styles: {
+      lineColor: [0, 0, 0],
+      lineWidth: 0.2,
+      textColor: [0, 0, 0],
+      fontSize: 10,
+      font: 'helvetica',
+      cellPadding: 3,
+      valign: 'middle'
+    },
+    headStyles: {
+      fillColor: [255, 255, 255],
+      textColor: [0, 0, 0],
+      lineColor: [0, 0, 0],
+      lineWidth: 0.2
+    },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 55, halign: 'left' },
+      2: { cellWidth: 42, halign: 'left' },
+      3: { cellWidth: 35, halign: 'right' },
+      4: { cellWidth: 43, halign: 'left' }
+    },
+    margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT }
+  });
+
+  // @ts-ignore
+  y = doc.lastAutoTable.finalY + 12;
+
+  // Signatures on new page if space is insufficient
+  if (y > PAGE_HEIGHT - 65) {
+    doc.addPage();
+    y = 30;
+  }
+
+  // Right-aligned PPKD signatory block
+  const rightX = PAGE_WIDTH - 65;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`${data.place}, ${formatDate(data.date)}`, rightX, y, { align: 'center' });
+  y += 6;
+  doc.text('Pelaksana Pengelola Keuangan Desa', rightX, y, { align: 'center' });
+  y += 4;
+  doc.text('(PPKD)', rightX, y, { align: 'center' });
+  y += 24;
+  
+  doc.setFont('helvetica', 'bold');
+  const ppkdName = (data.ppkd || 'YUSUF HAIDIR').toUpperCase();
+  doc.text(ppkdName, rightX, y, { align: 'center' });
+  const ppkdWidth = doc.getTextWidth(ppkdName);
+  doc.setLineWidth(0.3);
+  doc.line(rightX - ppkdWidth / 2, y + 1, rightX + ppkdWidth / 2, y + 1);
+
+  doc.save(`Tanda-Terima-${data.letterNumber.replace(/\//g, '-')}.pdf`);
+};

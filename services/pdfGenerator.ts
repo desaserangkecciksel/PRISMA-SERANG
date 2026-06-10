@@ -610,13 +610,8 @@ export const generateTandaTerima = (data: LetterData, _settings: AppSettings) =>
     const employee = employees.find(e => (e.name || '').toLowerCase().trim() === (item.recipientName || '').toLowerCase().trim());
     const position = employee ? employee.position : '-';
     
-    // Custom staggered signature lines without row numbers
-    let signatureStr = '';
-    if (num % 2 !== 0) {
-      signatureStr = '...................................';
-    } else {
-      signatureStr = '                  ...................................';
-    }
+    // Empty signature block for a clean look
+    const signatureStr = '';
 
     return [
       num.toString(),

@@ -252,7 +252,7 @@ const Settings: React.FC = () => {
                 
                 // Recalculate totals
                 const totals: BudgetAllocations = {
-                    PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, SILPA: 0
+                    PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, DLL: 0
                 };
                 updatedEntries.forEach(entry => {
                     totals[entry.source] += entry.amount;
@@ -280,7 +280,7 @@ const Settings: React.FC = () => {
                 
                 // Recalculate totals
                 const totals: BudgetAllocations = {
-                    PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, SILPA: 0
+                    PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, DLL: 0
                 };
                 updatedEntries.forEach(entry => {
                     totals[entry.source] += entry.amount;
@@ -320,9 +320,8 @@ const Settings: React.FC = () => {
     setSettings(prev => {
         const updatedEntries = prev.budgetEntries.filter(e => e.id !== id);
         
-        // Recalculate totals
         const totals: BudgetAllocations = {
-            PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, SILPA: 0
+            PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, DLL: 0
         };
         updatedEntries.forEach(entry => {
             totals[entry.source] += entry.amount;
@@ -815,7 +814,7 @@ const Settings: React.FC = () => {
                          </div>
                          
                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {(['PAD', 'ADD', 'DDS', 'PBH', 'PBP', 'SILPA'] as const).map((source) => (
+                            {(['PAD', 'ADD', 'DDS', 'PBH', 'PBP', 'DLL'] as const).map((source) => (
                                 <div key={source} className={`relative p-4 rounded-xl border transition-all bg-slate-50 dark:bg-slate-900/30 border-slate-200 dark:border-slate-700 shadow-sm`}>
                                     <label className="block text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{source} (Rupiah)</label>
                                     <div className="relative">
@@ -892,7 +891,7 @@ const Settings: React.FC = () => {
                                     <option value="DDS">DDS</option>
                                     <option value="PBH">PBH</option>
                                     <option value="PBP">PBP</option>
-                                    <option value="SILPA">SILPA</option>
+                                    <option value="DLL">DLL</option>
                                 </select>
                             </div>
                             <div className="md:col-span-1">

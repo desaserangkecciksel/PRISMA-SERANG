@@ -120,7 +120,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
   // Kalkulasi Parameter Anggaran (Spent vs Allocated vs Remaining)
   const budgetParameterData = useMemo(() => {
-    const sources = ['PAD', 'ADD', 'DDS', 'PBH', 'PBP', 'SILPA'];
+    const sources = ['PAD', 'ADD', 'DDS', 'PBH', 'PBP', 'DLL'];
     const officialLetters = letters.filter(l => l.status !== 'draft');
 
     return sources.map(source => {
@@ -168,7 +168,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     'DDS': '#10b981', 
     'PBH': '#f59e0b', 
     'PBP': '#6366f1', 
-    'SILPA': '#8b5cf6', 
+    'DLL': '#8b5cf6', 
   };
 
   // Total Dana Keluar = Net Transfer + Pajak Terbayar

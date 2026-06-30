@@ -25,7 +25,7 @@ export const INITIAL_SETTINGS: AppSettings = {
     DDS: 1000000000,
     PBH: 200000000,
     PBP: 150000000,
-    SILPA: 50000000,
+    DLL: 50000000,
   },
   budgetEntries: [],
   // Profile Defaults

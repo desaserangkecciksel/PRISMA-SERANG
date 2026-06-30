@@ -82,7 +82,7 @@ export interface BudgetAllocations {
   DDS: number;
   PBH: number;
   PBP: number;
-  SILPA: number;
+  DLL: number;
 }
 
 export interface PkaOfficial {

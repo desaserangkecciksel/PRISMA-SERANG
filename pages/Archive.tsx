@@ -734,7 +734,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                 <option value="DDS">DDS</option>
                                 <option value="PBH">PBH</option>
                                 <option value="PBP">PBP</option>
-                                <option value="SILPA">SILPA</option>
+                                <option value="DLL">DLL</option>
                                 <option value="PAD">PAD</option>
                             </select>
                         </div>

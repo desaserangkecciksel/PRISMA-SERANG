@@ -584,10 +584,17 @@ export const generateTandaTerima = (data: LetterData, _settings: AppSettings) =>
   // Title
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
-  doc.text('TANDA TERIMA PENGHASILAN', PAGE_WIDTH / 2, y, { align: 'center' });
+  doc.text('TANDA TERIMA', PAGE_WIDTH / 2, y, { align: 'center' });
   y += 5;
   
-  // Subtitle
+  // Subtitle (Adapts automatically to follow the letter's Subject/Hal)
+  const subjectText = (data.subject || '').toUpperCase();
+  const maxTitleWidth = PAGE_WIDTH - (MARGIN_LEFT + MARGIN_RIGHT);
+  const splitSubject = doc.splitTextToSize(subjectText, maxTitleWidth);
+  doc.text(splitSubject, PAGE_WIDTH / 2, y, { align: 'center' });
+  y += (splitSubject.length * 5) + 1;
+  
+  // Source & Fiscal Year Subtitle
   const source = data.sourceFund || 'PENDAPATAN ASLI DESA (PAD)';
   const fiscalYear = data.fiscalYear || new Date().getFullYear();
   doc.text(`DARI SUMBER ${source.toUpperCase()} T.A ${fiscalYear}`, PAGE_WIDTH / 2, y, { align: 'center' });

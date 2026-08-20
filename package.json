@@ -19,11 +19,10 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit",
-    "start": "node dist/server.js"
+    "lint": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

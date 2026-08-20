@@ -82,6 +82,7 @@ export interface BudgetAllocations {
   DDS: number;
   PBH: number;
   PBP: number;
+  PBK: number;
   DLL: number;
 }
 

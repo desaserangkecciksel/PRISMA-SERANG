@@ -25,6 +25,7 @@ export const INITIAL_SETTINGS: AppSettings = {
     DDS: 1000000000,
     PBH: 200000000,
     PBP: 150000000,
+    PBK: 100000000,
     DLL: 50000000,
   },
   budgetEntries: [],

@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { LetterData } from '../types';
+import { SUB_FIELDS, SOURCE_FUND_OPTIONS } from '../constants';
 import { v4 as uuidv4 } from 'uuid';
 
 const isBankKeywordMatch = (text: string) => {
@@ -53,7 +54,10 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
       startDate: '',
       endDate: '',
       status: '',
-      sourceFund: ''
+      sourceFund: '',
+      field: '',
+      subField: '',
+      activity: ''
   });
 
   // Pagination State
@@ -150,8 +154,49 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
   };
 
   const resetFilters = () => {
-      setFilterConfig({ startDate: '', endDate: '', status: '', sourceFund: '' });
+      setFilterConfig({
+          startDate: '',
+          endDate: '',
+          status: '',
+          sourceFund: '',
+          field: '',
+          subField: '',
+          activity: ''
+      });
   };
+
+  // Precomputed filter options for Bidang, Sub. Bidang, and Kegiatan
+  const availableFields = useMemo(() => {
+      const predefined = Object.keys(SUB_FIELDS);
+      const fromLetters = letters.map(l => l.field).filter((f): f is string => Boolean(f && f.trim()));
+      return Array.from(new Set([...predefined, ...fromLetters]));
+  }, [letters]);
+
+  const availableSubFields = useMemo(() => {
+      if (filterConfig.field) {
+          const predefined = SUB_FIELDS[filterConfig.field] || [];
+          const fromLetters = letters
+              .filter(l => l.field === filterConfig.field)
+              .map(l => l.subField)
+              .filter((sf): sf is string => Boolean(sf && sf.trim()));
+          return Array.from(new Set([...predefined, ...fromLetters]));
+      }
+      const allPredefined = Object.values(SUB_FIELDS).flat();
+      const fromLetters = letters.map(l => l.subField).filter((sf): sf is string => Boolean(sf && sf.trim()));
+      return Array.from(new Set([...allPredefined, ...fromLetters]));
+  }, [letters, filterConfig.field]);
+
+  const availableActivities = useMemo(() => {
+      let subset = letters;
+      if (filterConfig.field) {
+          subset = subset.filter(l => l.field === filterConfig.field);
+      }
+      if (filterConfig.subField) {
+          subset = subset.filter(l => l.subField === filterConfig.subField);
+      }
+      const activities = subset.map(l => l.activity).filter((a): a is string => Boolean(a && a.trim()));
+      return Array.from(new Set(activities));
+  }, [letters, filterConfig.field, filterConfig.subField]);
 
   // --- LOGIC: UPDATE PAJAK ---
   const updateTaxStatus = async (id: string, status: 'paid' | 'unpaid') => {
@@ -185,6 +230,8 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
             (letter.letterNumber || '').toLowerCase().includes(lowerTerm) ||
             (letter.pkaName || '').toLowerCase().includes(lowerTerm) ||
             (letter.activity || '').toLowerCase().includes(lowerTerm) ||
+            (letter.field || '').toLowerCase().includes(lowerTerm) ||
+            (letter.subField || '').toLowerCase().includes(lowerTerm) ||
             (letter.subject || '').toLowerCase().includes(lowerTerm) ||
             (letter.nature || '').toLowerCase().includes(lowerTerm)
         );
@@ -202,6 +249,15 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
     }
     if (filterConfig.endDate) {
         result = result.filter(l => l.date <= filterConfig.endDate);
+    }
+    if (filterConfig.field) {
+        result = result.filter(l => l.field === filterConfig.field);
+    }
+    if (filterConfig.subField) {
+        result = result.filter(l => l.subField === filterConfig.subField);
+    }
+    if (filterConfig.activity) {
+        result = result.filter(l => (l.activity || '').toLowerCase().includes(filterConfig.activity.toLowerCase()));
     }
 
     return result;
@@ -403,6 +459,9 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
             'Nomor Surat': l.letterNumber,
             'Nama PKA': l.pkaName,
             'Hal': l.subject,
+            'Bidang': l.field || '-',
+            'Sub. Bidang': l.subField || '-',
+            'Kegiatan': l.activity || '-',
             'Sumber Dana': l.sourceFund,
             'Total Nominal (Rp)': l.totalAmount,
             'Status': l.status === 'saved' ? 'Selesai' : l.status === 'archived' ? 'Terarsip' : 'Draft'
@@ -636,8 +695,8 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                     >
                         <ListFilter size={18} className="mr-2" />
                         Filter
-                        {(filterConfig.startDate || filterConfig.endDate || filterConfig.status || filterConfig.sourceFund) && (
-                            <span className="ml-2 w-2 h-2 rounded-full bg-teal-500"></span>
+                        {(filterConfig.startDate || filterConfig.endDate || filterConfig.status || filterConfig.sourceFund || filterConfig.field || filterConfig.subField || filterConfig.activity) && (
+                            <span className="ml-2 w-2 h-2 rounded-full bg-teal-500 animate-pulse"></span>
                         )}
                     </button>
 
@@ -677,95 +736,210 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                     </div>
                 </div>
             </div>
+
+            {/* Active Filters Summary Chips */}
+            {(filterConfig.startDate || filterConfig.endDate || filterConfig.status || filterConfig.sourceFund || filterConfig.field || filterConfig.subField || filterConfig.activity) && (
+                <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+                    <span className="text-slate-400 dark:text-slate-500 font-bold">Filter Aktif:</span>
+                    {filterConfig.field && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-medium">
+                            Bidang: {filterConfig.field.length > 25 ? filterConfig.field.substring(0, 25) + '...' : filterConfig.field}
+                            <button onClick={() => setFilterConfig(prev => ({...prev, field: '', subField: ''}))} className="ml-1.5 hover:text-teal-900 dark:hover:text-white"><X size={12} /></button>
+                        </span>
+                    )}
+                    {filterConfig.subField && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 font-medium">
+                            Sub. Bidang: {filterConfig.subField.length > 25 ? filterConfig.subField.substring(0, 25) + '...' : filterConfig.subField}
+                            <button onClick={() => setFilterConfig(prev => ({...prev, subField: ''}))} className="ml-1.5 hover:text-sky-900 dark:hover:text-white"><X size={12} /></button>
+                        </span>
+                    )}
+                    {filterConfig.activity && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-medium">
+                            Kegiatan: {filterConfig.activity.length > 25 ? filterConfig.activity.substring(0, 25) + '...' : filterConfig.activity}
+                            <button onClick={() => setFilterConfig(prev => ({...prev, activity: ''}))} className="ml-1.5 hover:text-indigo-900 dark:hover:text-white"><X size={12} /></button>
+                        </span>
+                    )}
+                    {filterConfig.sourceFund && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-medium">
+                            Sumber: {filterConfig.sourceFund}
+                            <button onClick={() => setFilterConfig(prev => ({...prev, sourceFund: ''}))} className="ml-1.5 hover:text-emerald-900 dark:hover:text-white"><X size={12} /></button>
+                        </span>
+                    )}
+                    {filterConfig.status && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-medium">
+                            Status: {filterConfig.status}
+                            <button onClick={() => setFilterConfig(prev => ({...prev, status: ''}))} className="ml-1.5 hover:text-amber-900 dark:hover:text-white"><X size={12} /></button>
+                        </span>
+                    )}
+                    {(filterConfig.startDate || filterConfig.endDate) && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 font-medium">
+                            Periode: {filterConfig.startDate || 'Awal'} s/d {filterConfig.endDate || 'Akhir'}
+                            <button onClick={() => setFilterConfig(prev => ({...prev, startDate: '', endDate: ''}))} className="ml-1.5 hover:text-slate-900 dark:hover:text-white"><X size={12} /></button>
+                        </span>
+                    )}
+                    <button 
+                        onClick={resetFilters}
+                        className="text-red-600 dark:text-red-400 hover:underline font-bold text-[11px] ml-1"
+                    >
+                        Hapus Semua Filter
+                    </button>
+                </div>
+            )}
         </div>
 
         {/* Filter Panel */}
         {showFilters && (
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg animate-fade-in grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Dari Tanggal</label>
-                    <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input 
-                            type="date" 
-                            className="w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200"
-                            value={filterConfig.startDate}
-                            onChange={(e) => setFilterConfig(prev => ({...prev, startDate: e.target.value}))}
-                        />
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg animate-fade-in space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Dari Tanggal</label>
+                        <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input 
+                                type="date" 
+                                className="w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200"
+                                value={filterConfig.startDate}
+                                onChange={(e) => setFilterConfig(prev => ({...prev, startDate: e.target.value}))}
+                            />
+                        </div>
                     </div>
-                </div>
-                <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Sampai Tanggal</label>
-                    <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input 
-                            type="date" 
-                            className="w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200"
-                            value={filterConfig.endDate}
-                            onChange={(e) => setFilterConfig(prev => ({...prev, endDate: e.target.value}))}
-                        />
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Sampai Tanggal</label>
+                        <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input 
+                                type="date" 
+                                className="w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200"
+                                value={filterConfig.endDate}
+                                onChange={(e) => setFilterConfig(prev => ({...prev, endDate: e.target.value}))}
+                            />
+                        </div>
                     </div>
-                </div>
 
-                {activeTab === 'letters' && (
-                    <>
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Status Surat</label>
+                    {activeTab === 'letters' && (
+                        <>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Status Surat</label>
+                                <select 
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200"
+                                    value={filterConfig.status}
+                                    onChange={(e) => setFilterConfig(prev => ({...prev, status: e.target.value}))}
+                                >
+                                    <option value="">Semua Status</option>
+                                    <option value="draft">Draft</option>
+                                    <option value="saved">Selesai (Saved)</option>
+                                    <option value="archived">Terarsip</option>
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Sumber Dana</label>
+                                <select 
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200"
+                                    value={filterConfig.sourceFund}
+                                    onChange={(e) => setFilterConfig(prev => ({...prev, sourceFund: e.target.value}))}
+                                >
+                                    <option value="">Semua Sumber Dana</option>
+                                    {SOURCE_FUND_OPTIONS.map(opt => (
+                                        <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </>
+                    )}
+
+                    {activeTab === 'taxes' && (
+                         <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Status Pembayaran</label>
                             <select 
                                 className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200"
                                 value={filterConfig.status}
                                 onChange={(e) => setFilterConfig(prev => ({...prev, status: e.target.value}))}
                             >
-                                <option value="">Semua Status</option>
-                                <option value="draft">Draft</option>
-                                <option value="saved">Selesai (Saved)</option>
-                                <option value="archived">Terarsip</option>
+                                <option value="">Semua</option>
+                                <option value="paid">Lunas (Sudah Dibayar)</option>
+                                <option value="unpaid">Belum Dibayar</option>
                             </select>
                         </div>
-                         <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Sumber Dana</label>
+                    )}
+                </div>
+
+                {activeTab === 'letters' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end pt-3 border-t border-slate-100 dark:border-slate-700/60">
+                        {/* Filter Bidang */}
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-teal-700 dark:text-teal-400 uppercase flex items-center">
+                                Filter Bidang
+                            </label>
                             <select 
                                 className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200"
-                                value={filterConfig.sourceFund}
-                                onChange={(e) => setFilterConfig(prev => ({...prev, sourceFund: e.target.value}))}
+                                value={filterConfig.field}
+                                onChange={(e) => setFilterConfig(prev => ({...prev, field: e.target.value, subField: ''}))}
                             >
-                                <option value="">Semua Sumber Dana</option>
-                                <option value="ADD">ADD</option>
-                                <option value="DDS">DDS</option>
-                                <option value="PBH">PBH</option>
-                                <option value="PBP">PBP</option>
-                                <option value="PBK">PBK</option>
-                                <option value="DLL">DLL</option>
-                                <option value="PAD">PAD</option>
+                                <option value="">Semua Bidang</option>
+                                {availableFields.map(f => (
+                                    <option key={f} value={f}>{f}</option>
+                                ))}
                             </select>
                         </div>
-                    </>
-                )}
 
-                {activeTab === 'taxes' && (
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Status Pembayaran</label>
-                        <select 
-                            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200"
-                            value={filterConfig.status}
-                            onChange={(e) => setFilterConfig(prev => ({...prev, status: e.target.value}))}
-                        >
-                            <option value="">Semua</option>
-                            <option value="paid">Lunas (Sudah Dibayar)</option>
-                            <option value="unpaid">Belum Dibayar</option>
-                        </select>
+                        {/* Filter Sub. Bidang */}
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-teal-700 dark:text-teal-400 uppercase flex items-center">
+                                Filter Sub. Bidang
+                            </label>
+                            <select 
+                                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200"
+                                value={filterConfig.subField}
+                                onChange={(e) => setFilterConfig(prev => ({...prev, subField: e.target.value}))}
+                            >
+                                <option value="">Semua Sub. Bidang</option>
+                                {availableSubFields.map(sf => (
+                                    <option key={sf} value={sf}>{sf}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Filter Kegiatan */}
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-teal-700 dark:text-teal-400 uppercase flex items-center">
+                                Filter Kegiatan
+                            </label>
+                            <select 
+                                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-teal-500 text-slate-700 dark:text-slate-200 truncate"
+                                value={filterConfig.activity}
+                                onChange={(e) => setFilterConfig(prev => ({...prev, activity: e.target.value}))}
+                            >
+                                <option value="">Semua Kegiatan</option>
+                                {availableActivities.map(act => (
+                                    <option key={act} value={act} title={act}>
+                                        {act.length > 55 ? act.substring(0, 55) + '...' : act}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Reset Button */}
+                        <div className="flex items-end">
+                            <button 
+                                onClick={resetFilters} 
+                                className="w-full py-2 px-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 font-bold text-sm transition-colors flex items-center justify-center border border-slate-200 dark:border-slate-600"
+                            >
+                                <FilterX size={16} className="mr-2" /> Reset Filter
+                            </button>
+                        </div>
                     </div>
                 )}
-                
-                {/* Reset Button - Always visible but styled subtly */}
-                 <div className="flex items-end">
-                    <button 
-                        onClick={resetFilters} 
-                        className="w-full py-2 px-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 font-bold text-sm transition-colors flex items-center justify-center border border-slate-200 dark:border-slate-600"
-                    >
-                        <FilterX size={16} className="mr-2" /> Reset
-                    </button>
-                </div>
+
+                {activeTab !== 'letters' && (
+                    <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                        <button 
+                            onClick={resetFilters} 
+                            className="py-2 px-6 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 font-bold text-sm transition-colors flex items-center justify-center border border-slate-200 dark:border-slate-600"
+                        >
+                            <FilterX size={16} className="mr-2" /> Reset
+                        </button>
+                    </div>
+                )}
             </div>
         )}
 
@@ -824,7 +998,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                     <th className="w-60 px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => requestSort('letterNumber')}>
                                         <div className="flex items-center">No Surat {getSortIcon('letterNumber')}</div>
                                     </th>
-                                    <th className="min-w-[300px] px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Hal</th>
+                                    <th className="min-w-[340px] px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Hal</th>
                                     <th className="w-40 px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => requestSort('totalAmount')}>
                                         <div className="flex items-center">Total {getSortIcon('totalAmount')}</div>
                                     </th>
@@ -837,7 +1011,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                     <tr>
                                         <td colSpan={7} className="px-6 py-20 text-center text-slate-400 dark:text-slate-500">
                                             <ArchiveIcon size={48} className="mx-auto mb-4 opacity-20" />
-                                            {searchTerm || filterConfig.status || filterConfig.startDate ? 'Tidak ditemukan surat dengan filter tersebut.' : 'Belum ada surat yang diarsipkan.'}
+                                            {searchTerm || filterConfig.status || filterConfig.startDate || filterConfig.field || filterConfig.subField || filterConfig.activity ? 'Tidak ditemukan surat dengan filter tersebut.' : 'Belum ada surat yang diarsipkan.'}
                                         </td>
                                     </tr>
                                 ) : (
@@ -855,10 +1029,37 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                                     {letter.letterNumber}
                                                 </td>
                                                 <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
-                                                    <div className="line-clamp-2 leading-relaxed" title={letter.subject}>{letter.subject}</div>
-                                                    <div className="flex gap-2 mt-1">
-                                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight">{letter.pkaName}</span>
-                                                        {letter.sourceFund && <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-1.5 rounded text-slate-500 font-bold">{letter.sourceFund}</span>}
+                                                    {/* Baris Hal */}
+                                                    <div className="font-semibold text-slate-900 dark:text-slate-100 leading-snug line-clamp-2" title={letter.subject}>
+                                                        {letter.subject}
+                                                    </div>
+
+                                                    {/* Munculkan setelah baris "Hal": Bidang, Sub. Bidang, Kegiatan */}
+                                                    <div className="mt-2 space-y-1 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 text-xs">
+                                                        <div className="flex items-start">
+                                                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">Bidang:</span>
+                                                            <span className="text-teal-700 dark:text-teal-300 font-semibold">{letter.field || '-'}</span>
+                                                        </div>
+                                                        <div className="flex items-start">
+                                                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">Sub. Bidang:</span>
+                                                            <span className="text-sky-700 dark:text-sky-300 font-semibold">{letter.subField || '-'}</span>
+                                                        </div>
+                                                        <div className="flex items-start">
+                                                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">Kegiatan:</span>
+                                                            <span className="text-slate-700 dark:text-slate-200 font-medium leading-relaxed">{letter.activity || '-'}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Metadata: PKA dan Sumber Dana */}
+                                                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                                                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-tight bg-slate-100 dark:bg-slate-700/80 px-2 py-0.5 rounded">
+                                                            PKA: {letter.pkaName || '-'}
+                                                        </span>
+                                                        {letter.sourceFund && (
+                                                            <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded font-bold border border-emerald-200 dark:border-emerald-800">
+                                                                {letter.sourceFund}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white font-mono font-bold">

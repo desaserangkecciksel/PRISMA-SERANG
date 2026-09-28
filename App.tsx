@@ -97,7 +97,7 @@ function App() {
       case 'dashboard':
         return <Dashboard onNavigate={handlePageChange} />;
       case 'input':
-        return <InputForm initialData={editingLetter} onBack={handleBack} />;
+        return <InputForm initialData={editingLetter} onBack={handleBack} onNavigate={handlePageChange} />;
       case 'archive':
         return <Archive onEdit={handleEditLetter} initialTab={archiveTab} />;
       case 'employees':

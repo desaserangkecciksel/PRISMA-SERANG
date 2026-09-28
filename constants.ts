@@ -148,3 +148,53 @@ export const COLORS = {
   success: '#10b981', // emerald-500
   danger: '#ef4444', // red-500
 };
+
+export const SUB_FIELDS: Record<string, string[]> = {
+  "Bidang Penyelenggaran Pemerintahan Desa": [
+    "Penyelenggaran Belanja Siltap, Tunjangan dan Operasional Pemerintahan Desa",
+    "Penyediaan Sarana Prasarana Pemerintahan Desa",
+    "Pengelolaan Administrasi Kependudukan, Pencatatan Sipil, Statistik dan Kearsipan",
+    "Penyelenggaraan Tata Praja Pemerintahan, Perencanaan, Keuangan dan Pelaporan",
+    "Sub Bidang Pertanahan"
+  ],
+  "Bidang Pelaksanaan Pembangunan Desa": [
+    "Sub Bidang Pendidikan",
+    "Sub Bidang Kesehatan",
+    "Sub Bidang Pekerjaan Umum dan Penataan Ruang",
+    "Sub Bidang Kawasan Pemukiman",
+    "Sub Bidang Kehutanan dan Lingkungan Hidup",
+    "Sub Bidang Perhubungan, Komunikasi dan Informatika",
+    "Sub Bidang Energi dan Sumberdaya Mineral",
+    "Sub Bidang Pariwisata"
+  ],
+  "Bidang Pembinaan Kemasyarakatan": [
+    "Sub Bidang Ketenteraman, Ketertiban Umum dan Perlindungan Masyarakat",
+    "Sub Bidang Kebudayaan dan Keagamaan",
+    "Sub Bidang Kepemudaan dan Olahraga",
+    "Sub Bidang Kelembagaan Masyarakat"
+  ],
+  "Bidang Pemberdayaan Masyarakat": [
+    "Sub Bidang Kelautan dan Perikanan",
+    "Sub Bidang Pertanian dan Peternakan",
+    "Sub Bidang Peningkatan Kapasitas Aparatur Desa",
+    "Sub Bidang Pemberdayaan Perempuan, Perlindungan Anak dan Keluarga",
+    "Sub Bidang Koperasi, Usaha Micro Kecil dan Menengah (UMKM)",
+    "Sub Bidang Dukungan Penananam Modal",
+    "Sub Bidang Perdagangan dan Perindustrian"
+  ],
+  "Bidang Penanggulangan Bencana, Darurat dan Mendesak Desa": [
+    "Sub Bidang Penanggulangan Bencana",
+    "Sub Bidang Keadaan Darurat",
+    "Sub Bidang Keadaan Mendesak"
+  ]
+};
+
+export const SOURCE_FUND_OPTIONS = [
+  "PAD",
+  "ADD",
+  "DDS",
+  "PBH",
+  "PBP",
+  "PBK",
+  "DLL"
+];

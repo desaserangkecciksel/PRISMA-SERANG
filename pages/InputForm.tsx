@@ -2,61 +2,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, Trash2, Check, Calculator, UploadCloud, Camera, FileCheck, AlertTriangle, Plus, X, ArrowLeft, RefreshCw, Lock, Loader2, Printer, FileText, ArrowRight } from 'lucide-react';
 import { LetterData, TransactionItem, Employee, AppSettings } from '../types';
-import { INITIAL_FORM_DATA, INITIAL_SETTINGS } from '../constants';
+import { INITIAL_FORM_DATA, INITIAL_SETTINGS, SUB_FIELDS, SOURCE_FUND_OPTIONS } from '../constants';
 import { StorageService } from '../services/storageService';
 import { BlobService } from '../services/blobService';
 import { generateSPM, generateSPP, generateBA, generateTandaTerima } from '../services/pdfGenerator';
 import { v4 as uuidv4 } from 'uuid';
-
-const SUB_FIELDS: Record<string, string[]> = {
-  "Bidang Penyelenggaran Pemerintahan Desa": [
-    "Penyelenggaran Belanja Siltap, Tunjangan dan Operasional Pemerintahan Desa",
-    "Penyediaan Sarana Prasarana Pemerintahan Desa",
-    "Pengelolaan Administrasi Kependudukan, Pencatatan Sipil, Statistik dan Kearsipan",
-    "Penyelenggaraan Tata Praja Pemerintahan, Perencanaan, Keuangan dan Pelaporan",
-    "Sub Bidang Pertanahan"
-  ],
-  "Bidang Pelaksanaan Pembangunan Desa": [
-    "Sub Bidang Pendidikan",
-    "Sub Bidang Kesehatan",
-    "Sub Bidang Pekerjaan Umum dan Penataan Ruang",
-    "Sub Bidang Kawasan Pemukiman",
-    "Sub Bidang Kehutanan dan Lingkungan Hidup",
-    "Sub Bidang Perhubungan, Komunikasi dan Informatika",
-    "Sub Bidang Energi dan Sumberdaya Mineral",
-    "Sub Bidang Pariwisata"
-  ],
-  "Bidang Pembinaan Kemasyarakatan": [
-    "Sub Bidang Ketenteraman, Ketertiban Umum dan Perlindungan Masyarakat",
-    "Sub Bidang Kebudayaan dan Keagamaan",
-    "Sub Bidang Kepemudaan dan Olahraga",
-    "Sub Bidang Kelembagaan Masyarakat"
-  ],
-  "Bidang Pemberdayaan Masyarakat": [
-    "Sub Bidang Kelautan dan Perikanan",
-    "Sub Bidang Pertanian dan Peternakan",
-    "Sub Bidang Peningkatan Kapasitas Aparatur Desa",
-    "Sub Bidang Pemberdayaan Perempuan, Perlindungan Anak dan Keluarga",
-    "Sub Bidang Koperasi, Usaha Micro Kecil dan Menengah (UMKM)",
-    "Sub Bidang Dukungan Penananam Modal",
-    "Sub Bidang Perdagangan dan Perindustrian"
-  ],
-  "Bidang Penanggulangan Bencana, Darurat dan Mendesak Desa": [
-    "Sub Bidang Penanggulangan Bencana",
-    "Sub Bidang Keadaan Darurat",
-    "Sub Bidang Keadaan Mendesak"
-  ]
-};
-
-const SOURCE_FUND_OPTIONS = [
-  "PAD",
-  "ADD",
-  "DDS",
-  "PBH",
-  "PBP",
-  "PBK",
-  "DLL"
-];
 
 const NATURE_OPTIONS = [
   "Penting",
@@ -120,9 +70,10 @@ const parseNumber = (str: string): number => {
 interface InputFormProps {
     initialData?: LetterData | null;
     onBack: () => void;
+    onNavigate?: (page: string) => void;
 }
 
-const InputForm: React.FC<InputFormProps> = ({ initialData, onBack }) => {
+const InputForm: React.FC<InputFormProps> = ({ initialData, onBack, onNavigate }) => {
   const [formData, setFormData] = useState<LetterData>(initialData || INITIAL_FORM_DATA);
   const [fileError, setFileError] = useState<string>('');
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -496,9 +447,33 @@ const InputForm: React.FC<InputFormProps> = ({ initialData, onBack }) => {
                         <Check size={40} className="text-green-600 dark:text-green-400" strokeWidth={3} />
                     </div>
                     <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2">Dokumen Tersimpan!</h3>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 leading-relaxed">
-                        Data berhasil disimpan ke database. Anda dapat langsung mencetak dokumen atau kembali ke menu.
+                    <p className="text-slate-500 dark:text-slate-400 text-sm mb-4 leading-relaxed">
+                        Data berhasil disimpan ke database. Anda dapat langsung mencetak dokumen atau melihatnya di Arsip Surat.
                     </p>
+
+                    {/* Ringkasan Dokumen */}
+                    <div className="text-left bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 mb-5 space-y-1.5 text-xs">
+                        <div className="flex">
+                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">No. Dokumen:</span>
+                            <span className="font-bold text-teal-600 dark:text-teal-400 truncate">{formData.letterNumber}</span>
+                        </div>
+                        <div className="flex">
+                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">Hal:</span>
+                            <span className="text-slate-800 dark:text-slate-200 font-medium truncate">{formData.subject || '-'}</span>
+                        </div>
+                        <div className="flex">
+                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">Bidang:</span>
+                            <span className="text-teal-700 dark:text-teal-300 font-medium">{formData.field || '-'}</span>
+                        </div>
+                        <div className="flex">
+                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">Sub. Bidang:</span>
+                            <span className="text-sky-700 dark:text-sky-300 font-medium">{formData.subField || '-'}</span>
+                        </div>
+                        <div className="flex">
+                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">Kegiatan:</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-medium">{formData.activity || '-'}</span>
+                        </div>
+                    </div>
                     
                     <div className="grid grid-cols-2 gap-3 mb-6">
                         <button onClick={() => handleDirectPrint('SPM')} className="col-span-2 md:col-span-1 flex items-center justify-center px-4 py-3 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 font-bold rounded-xl transition-colors border border-teal-200 dark:border-teal-800 text-xs">
@@ -515,18 +490,22 @@ const InputForm: React.FC<InputFormProps> = ({ initialData, onBack }) => {
                         </button>
                     </div>
 
-                    <div className="flex gap-3 border-t border-slate-100 dark:border-slate-700 pt-6">
+                    <div className="flex flex-col sm:flex-row gap-3 border-t border-slate-100 dark:border-slate-700 pt-5">
                         <button 
-                            onClick={() => setShowSuccessModal(false)}
-                            className="flex-1 px-4 py-3 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors border border-slate-200 dark:border-slate-600 text-sm"
+                            onClick={() => {
+                                setShowSuccessModal(false);
+                                if (onNavigate) onNavigate('archive');
+                                else onBack();
+                            }}
+                            className="flex-1 px-4 py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl shadow-md transition-colors text-xs flex items-center justify-center"
                         >
-                            Tutup
+                            <FileCheck size={16} className="mr-2" /> Buka Arsip Surat
                         </button>
                         <button 
                             onClick={onBack}
-                            className="flex-1 px-4 py-3 bg-slate-800 dark:bg-black text-white font-bold rounded-xl hover:bg-slate-900 dark:hover:bg-slate-900 shadow-lg transition-all transform hover:-translate-y-0.5 text-sm flex items-center justify-center"
+                            className="flex-1 px-4 py-3 bg-slate-800 dark:bg-black text-white font-bold rounded-xl hover:bg-slate-900 dark:hover:bg-slate-900 shadow-lg transition-all text-xs flex items-center justify-center"
                         >
-                            Kembali ke Menu <ArrowRight size={16} className="ml-2"/>
+                            Kembali <ArrowRight size={16} className="ml-2"/>
                         </button>
                     </div>
                 </div>

@@ -90,6 +90,10 @@ const Settings: React.FC = () => {
   const [newBudgetDesc, setNewBudgetDesc] = useState('');
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
 
+  // State for Direct Annual Allocation (Pagu) Editing
+  const [editingAllocationSource, setEditingAllocationSource] = useState<keyof BudgetAllocations | null>(null);
+  const [allocationInputVal, setAllocationInputVal] = useState<string>('');
+
   useEffect(() => {
       const loadSettings = async () => {
           try {
@@ -237,6 +241,54 @@ const Settings: React.FC = () => {
       }
   };
 
+  // --- Direct Pagu Anggaran Tahunan Handlers ---
+  const handleStartEditAllocation = (source: keyof BudgetAllocations) => {
+    setEditingAllocationSource(source);
+    setAllocationInputVal(formatNumber(settings.budgetAllocations?.[source] || 0));
+  };
+
+  const handleSaveAllocation = (source: keyof BudgetAllocations) => {
+    const val = parseNumber(allocationInputVal);
+    setSettings(prev => ({
+      ...prev,
+      budgetAllocations: {
+        ...(prev.budgetAllocations || {}),
+        [source]: Math.max(0, val)
+      }
+    }));
+    setEditingAllocationSource(null);
+    setAllocationInputVal('');
+  };
+
+  const handleResetAllocation = (source: keyof BudgetAllocations) => {
+    setSettings(prev => ({
+      ...prev,
+      budgetAllocations: {
+        ...(prev.budgetAllocations || {}),
+        [source]: 0
+      }
+    }));
+    if (editingAllocationSource === source) {
+      setEditingAllocationSource(null);
+      setAllocationInputVal('');
+    }
+  };
+
+  const handleSyncAllocationsFromEntries = () => {
+    const totals: BudgetAllocations = {
+      PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, PBK: 0, DLL: 0, SILPA: 0
+    };
+    (settings.budgetEntries || []).forEach(entry => {
+      if (totals[entry.source] !== undefined) {
+        totals[entry.source] += entry.amount;
+      }
+    });
+    setSettings(prev => ({
+      ...prev,
+      budgetAllocations: totals
+    }));
+  };
+
   // --- Budget Entry Management ---
   const handleAddBudgetEntry = () => {
     const amount = parseNumber(newBudgetAmount);
@@ -252,10 +304,12 @@ const Settings: React.FC = () => {
                 
                 // Recalculate totals
                 const totals: BudgetAllocations = {
-                    PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, PBK: 0, DLL: 0
+                    PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, PBK: 0, DLL: 0, SILPA: 0
                 };
                 updatedEntries.forEach(entry => {
-                    totals[entry.source] += entry.amount;
+                    if (totals[entry.source] !== undefined) {
+                        totals[entry.source] += entry.amount;
+                    }
                 });
 
                 return {
@@ -280,10 +334,12 @@ const Settings: React.FC = () => {
                 
                 // Recalculate totals
                 const totals: BudgetAllocations = {
-                    PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, PBK: 0, DLL: 0
+                    PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, PBK: 0, DLL: 0, SILPA: 0
                 };
                 updatedEntries.forEach(entry => {
-                    totals[entry.source] += entry.amount;
+                    if (totals[entry.source] !== undefined) {
+                        totals[entry.source] += entry.amount;
+                    }
                 });
 
                 return {
@@ -321,10 +377,12 @@ const Settings: React.FC = () => {
         const updatedEntries = prev.budgetEntries.filter(e => e.id !== id);
         
         const totals: BudgetAllocations = {
-            PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, PBK: 0, DLL: 0
+            PAD: 0, ADD: 0, DDS: 0, PBH: 0, PBP: 0, PBK: 0, DLL: 0, SILPA: 0
         };
         updatedEntries.forEach(entry => {
-            totals[entry.source] += entry.amount;
+            if (totals[entry.source] !== undefined) {
+                totals[entry.source] += entry.amount;
+            }
         });
 
         return {
@@ -808,36 +866,163 @@ const Settings: React.FC = () => {
                      <div className="space-y-6">
                          <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-4 mb-4 gap-4">
                             <div>
-                                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Alokasi Anggaran Tahunan</h3>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">Pagu anggaran APBDes (Otomatis terhitung dari rincian di bawah).</p>
+                                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                    <Landmark className="text-teal-600 dark:text-teal-400" size={22} />
+                                    Pengaturan Pagu Anggaran Tahunan (8 Sumber Dana)
+                                </h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">
+                                    Atur, edit nominal, isi alokasi baru, atau kosongkan pagu untuk PAD, ADD, DDS, PBH, PBP, PBK, DLL, dan SILPA.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="px-3.5 py-1.5 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-xl text-xs font-bold text-teal-800 dark:text-teal-200">
+                                    Total Pagu APBDes: <span className="font-mono text-sm ml-1 text-teal-900 dark:text-white">Rp {formatNumber(Object.values(settings.budgetAllocations || {}).reduce((a, b) => a + (b || 0), 0))}</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleSyncAllocationsFromEntries}
+                                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-teal-100 dark:hover:bg-teal-900/50 text-slate-700 dark:text-slate-200 hover:text-teal-800 dark:hover:text-teal-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-600 flex items-center gap-1.5"
+                                    title="Hitung total pagu otomatis berdasarkan rincian buku kas masuk"
+                                >
+                                    <RefreshCw size={13} /> Sinkronkan dari Rincian
+                                </button>
                             </div>
                          </div>
                          
-                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {(['PAD', 'ADD', 'DDS', 'PBH', 'PBP', 'PBK', 'DLL'] as const).map((source) => (
-                                <div key={source} className={`relative p-4 rounded-xl border transition-all bg-slate-50 dark:bg-slate-900/30 border-slate-200 dark:border-slate-700 shadow-sm`}>
-                                    <label className="block text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{source} (Rupiah)</label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">Rp</span>
-                                        <input 
-                                            type="text" 
-                                            className="w-full pl-10 pr-4 py-2 bg-transparent border-none focus:ring-0 font-mono font-bold text-slate-800 dark:text-slate-100 text-lg" 
-                                            value={formatNumber(settings.budgetAllocations?.[source])} 
-                                            readOnly
-                                        />
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {[
+                                { key: 'PAD', label: 'PAD', desc: 'Pendapatan Asli Desa' },
+                                { key: 'ADD', label: 'ADD', desc: 'Alokasi Dana Desa' },
+                                { key: 'DDS', label: 'DDS', desc: 'Dana Desa (APBN)' },
+                                { key: 'PBH', label: 'PBH', desc: 'Bagi Hasil Pajak & Retribusi' },
+                                { key: 'PBP', label: 'PBP', desc: 'Bantuan Keuangan Provinsi' },
+                                { key: 'PBK', label: 'PBK', desc: 'Bantuan Keuangan Kabupaten' },
+                                { key: 'DLL', label: 'DLL', desc: 'Pendapatan Lain-lain' },
+                                { key: 'SILPA', label: 'SILPA', desc: 'Sisa Lebih Pembiayaan Anggaran' },
+                            ].map((item) => {
+                                const source = item.key as keyof BudgetAllocations;
+                                const isEditing = editingAllocationSource === source;
+                                const currentAmount = settings.budgetAllocations?.[source] || 0;
+                                return (
+                                    <div 
+                                        key={source} 
+                                        className={`relative p-4 rounded-2xl border transition-all duration-200 ${
+                                            isEditing 
+                                            ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700 ring-2 ring-amber-400/20 shadow-md' 
+                                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-teal-300 dark:hover:border-teal-600 shadow-sm'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-300 text-xs font-black">
+                                                    {item.label}
+                                                </span>
+                                                <span className="text-[10px] text-slate-400 truncate max-w-[140px]" title={item.desc}>
+                                                    {item.desc}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                {!isEditing ? (
+                                                    <>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => handleStartEditAllocation(source)}
+                                                            className="p-1 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors"
+                                                            title={`Edit Isi Pagu ${item.label}`}
+                                                        >
+                                                            <Edit size={14} />
+                                                        </button>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (window.confirm(`Yakin ingin mengosongkan / menghapus nominal Pagu ${item.label}?`)) {
+                                                                    handleResetAllocation(source);
+                                                                }
+                                                            }}
+                                                            className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                                                            title={`Kosongkan / Hapus Pagu ${item.label} (Set Rp 0)`}
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => handleSaveAllocation(source)}
+                                                            className="p-1 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-lg transition-colors"
+                                                            title="Simpan Perubahan Pagu"
+                                                        >
+                                                            <Check size={16} strokeWidth={2.5} />
+                                                        </button>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setEditingAllocationSource(null)}
+                                                            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                                                            title="Batal Edit"
+                                                        >
+                                                            <X size={16} />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {isEditing ? (
+                                            <div className="space-y-2 mt-2">
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">Rp</span>
+                                                    <input 
+                                                        type="text" 
+                                                        autoFocus
+                                                        className="w-full pl-9 pr-3 py-1.5 border border-amber-300 dark:border-amber-600 rounded-xl bg-white dark:bg-slate-900 font-mono font-bold text-slate-900 dark:text-white text-base focus:ring-2 focus:ring-amber-500 outline-none" 
+                                                        value={allocationInputVal} 
+                                                        onChange={(e) => setAllocationInputVal(formatNumber(parseNumber(e.target.value)))}
+                                                        placeholder="0"
+                                                    />
+                                                </div>
+                                                <div className="flex gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSaveAllocation(source)}
+                                                        className="flex-1 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
+                                                    >
+                                                        Simpan
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditingAllocationSource(null)}
+                                                        className="px-2.5 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-colors"
+                                                    >
+                                                        Batal
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div 
+                                                onClick={() => handleStartEditAllocation(source)}
+                                                className="cursor-pointer group/val py-1"
+                                                title="Klik untuk mengedit nominal pagu ini"
+                                            >
+                                                <span className="text-[11px] text-slate-400 block font-semibold">Nominal Pagu:</span>
+                                                <div className="font-mono font-black text-slate-900 dark:text-white text-lg tracking-tight group-hover/val:text-teal-600 transition-colors">
+                                                    Rp {formatNumber(currentAmount)}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                          </div>
                      </div>
 
-                     {/* Fitur Baru: Input Nominal Anggaran */}
+                     {/* Fitur: Input Nominal Anggaran (Buku Kas Masuk) */}
                      <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
                         <div className="flex items-center mb-4 text-slate-800 dark:text-slate-100 border-b border-slate-100 dark:border-slate-700 pb-2">
                              <Plus size={24} className="mr-3 text-teal-600 dark:text-teal-400" />
                              <div className="flex-1">
-                                <h3 className="text-lg font-bold">Input Nominal Anggaran</h3>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">Tambahkan rincian pendapatan anggaran berdasarkan sumbernya.</p>
+                                <h3 className="text-lg font-bold">Rincian Penerimaan & Pendapatan Anggaran</h3>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Tambahkan atau edit rincian penerimaan kas berdasarkan sumber dana (PAD, ADD, DDS, PBH, PBP, PBK, DLL, SILPA).</p>
                              </div>
                              <div className="flex gap-2">
                                 <button 
@@ -880,7 +1065,7 @@ const Settings: React.FC = () => {
                                 />
                             </div>
                             <div className="md:col-span-1">
-                                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Sumber</label>
+                                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Sumber Dana</label>
                                 <select 
                                     className="w-full border-slate-300 dark:border-slate-600 rounded-lg shadow-sm p-2 text-sm border focus:ring-2 focus:ring-teal-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                                     value={newBudgetSource}
@@ -893,6 +1078,7 @@ const Settings: React.FC = () => {
                                     <option value="PBP">PBP</option>
                                     <option value="PBK">PBK</option>
                                     <option value="DLL">DLL</option>
+                                    <option value="SILPA">SILPA</option>
                                 </select>
                             </div>
                             <div className="md:col-span-1">

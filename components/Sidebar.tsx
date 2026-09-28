@@ -23,9 +23,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, isOpen, 
     const loadSettings = async () => {
         const data = await StorageService.getSettings();
         setSettings(data);
-        // Check cloud connectivity via Hostinger PHP API
+        // Check cloud connectivity via Hostinger PHP API with timeout
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            setIsCloudConnected(false);
+            setDbError("Perangkat sedang offline");
+            return;
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+
         try {
-            const response = await fetch('https://apbdesdesaserang.id/api.php');
+            const response = await fetch('https://apbdesdesaserang.id/api.php', { signal: controller.signal });
+            clearTimeout(timeoutId);
             if (response.ok) {
                 const status = await response.json();
                 if (status && (status.status === "online" || status.success)) {
@@ -49,9 +59,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, isOpen, 
                     setDbError(`HTTP ${response.status}`);
                 }
             }
-        } catch (e) {
+        } catch (e: any) {
+            clearTimeout(timeoutId);
             setIsCloudConnected(false);
-            setDbError("Tidak dapat terhubung ke server cloud");
+            if (e.name === 'AbortError') {
+                setDbError("Koneksi cloud lambat/timeout");
+            } else {
+                setDbError("Tidak dapat terhubung ke server cloud");
+            }
         }
     };
     loadSettings();

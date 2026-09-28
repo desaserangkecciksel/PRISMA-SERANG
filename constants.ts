@@ -27,6 +27,7 @@ export const INITIAL_SETTINGS: AppSettings = {
     PBP: 150000000,
     PBK: 100000000,
     DLL: 50000000,
+    SILPA: 0,
   },
   budgetEntries: [],
   // Profile Defaults
@@ -196,5 +197,6 @@ export const SOURCE_FUND_OPTIONS = [
   "PBH",
   "PBP",
   "PBK",
-  "DLL"
+  "DLL",
+  "SILPA"
 ];

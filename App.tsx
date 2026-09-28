@@ -17,8 +17,8 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true); 
   const [editingLetter, setEditingLetter] = useState<LetterData | null>(null);
   
-  // State untuk mengontrol tab default di halaman Archive (letters/taxes)
-  const [archiveTab, setArchiveTab] = useState<'letters' | 'taxes' | 'bank_fees'>('letters');
+  // State untuk mengontrol tab default di halaman Archive (letters/activities/taxes/bank_fees)
+  const [archiveTab, setArchiveTab] = useState<'letters' | 'activities' | 'taxes' | 'bank_fees'>('letters');
 
   useEffect(() => {
     const initApp = async () => {
@@ -56,13 +56,16 @@ function App() {
   };
 
   const handlePageChange = (page: string) => {
-    // Logic khusus untuk membuka Arsip bagian Pajak dari Dashboard
+    // Logic khusus untuk membuka Arsip bagian tertentu dari navigasi
     if (page === 'archive-taxes') {
         setCurrentPage('archive');
         setArchiveTab('taxes');
     } else if (page === 'archive-bank') {
         setCurrentPage('archive');
         setArchiveTab('bank_fees');
+    } else if (page === 'archive-activities') {
+        setCurrentPage('archive');
+        setArchiveTab('activities');
     } else {
         setCurrentPage(page);
         // Reset tab ke default ('letters') jika navigasi biasa (misal dari sidebar)

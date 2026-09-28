@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { StorageService } from '../services/storageService';
 import { generateSPM, generateSPP, generateBA, generateTandaTerima } from '../services/pdfGenerator';
-import { FileText, Download, FileSpreadsheet, Trash2, Printer, Archive as ArchiveIcon, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle, Edit, ChevronDown, Search, X, Copy, FileCheck, ChevronLeft, ChevronRight, ListFilter, Loader2, MoreHorizontal, Percent, Wallet, CheckCircle2, XCircle, Clock, CreditCard, FilterX, Calendar } from 'lucide-react';
+import { FileText, Download, FileSpreadsheet, Trash2, Printer, Archive as ArchiveIcon, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle, Edit, ChevronDown, ChevronUp, Search, X, Copy, FileCheck, ChevronLeft, ChevronRight, ListFilter, Loader2, MoreHorizontal, Percent, Wallet, CheckCircle2, XCircle, Clock, CreditCard, FilterX, Calendar, Layers, Folder, FolderKanban, List } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -31,7 +31,7 @@ const isAdminBankLetter = (l: LetterData) => {
 
 interface ArchiveProps {
   onEdit: (letter: LetterData) => void;
-  initialTab?: 'letters' | 'taxes' | 'bank_fees';
+  initialTab?: 'letters' | 'activities' | 'taxes' | 'bank_fees';
 }
 
 const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => {
@@ -39,8 +39,13 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
   const [loading, setLoading] = useState(true);
   const [settingsData, setSettingsData] = useState<any>(null);
 
-  // Tab State: 'letters' | 'taxes' | 'bank_fees'
-  const [activeTab, setActiveTab] = useState<'letters' | 'taxes' | 'bank_fees'>(initialTab);
+  // Tab State: 'letters' | 'activities' | 'taxes' | 'bank_fees'
+  const [activeTab, setActiveTab] = useState<'letters' | 'activities' | 'taxes' | 'bank_fees'>(initialTab);
+
+  // Mode Tampilan Halaman Bidang & Kegiatan: 'hierarchy' (struktur pohon berjenjang) | 'table' (matriks rinci)
+  const [activityViewMode, setActivityViewMode] = useState<'hierarchy' | 'table'>('hierarchy');
+  const [expandedFields, setExpandedFields] = useState<Record<string, boolean>>({});
+  const [expandedSubFields, setExpandedSubFields] = useState<Record<string, boolean>>({});
 
   const [sortConfig, setSortConfig] = useState<{ key: keyof LetterData; direction: 'ascending' | 'descending' } | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -81,7 +86,15 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                 StorageService.getLetters(),
                 StorageService.getSettings()
             ]);
-            setLetters(l || []);
+            const uniqueLetters: LetterData[] = [];
+            const seenIds = new Set<string>();
+            (l || []).forEach(item => {
+                if (item && item.id && !seenIds.has(item.id)) {
+                    seenIds.add(item.id);
+                    uniqueLetters.push(item);
+                }
+            });
+            setLetters(uniqueLetters);
             setSettingsData(s);
         } catch (e) {
             console.error(e);
@@ -137,7 +150,15 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
     };
     await StorageService.saveLetter(newLetter);
     const updated = await StorageService.getLetters();
-    setLetters(updated);
+    const uniqueLetters: LetterData[] = [];
+    const seenIds = new Set<string>();
+    (updated || []).forEach(item => {
+        if (item && item.id && !seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            uniqueLetters.push(item);
+        }
+    });
+    setLetters(uniqueLetters);
     alert(`Surat berhasil disalin menjadi Draft dengan No. SPM baru: ${nextSPM}`);
   };
 
@@ -365,13 +386,13 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
       const records: any[] = [];
       
       finishedLetters.forEach(l => {
-          (l.items || []).forEach(item => {
+          (l.items || []).forEach((item, itemIdx) => {
                // Mengambil item yang Keterangannya mengandung keyword bank atau suratnya adalah surat admin bank
                const isBankItem = isBankKeywordMatch(item.description || '') || isAdminBankLetter(l);
                
                if (isBankItem) {
                    records.push({
-                       id: item.id || `${l.id}-${Math.random()}`,
+                       id: `${l.id}-bank-${item.id || itemIdx}`,
                        letterId: l.id,
                        date: l.date,
                        letterNumber: l.letterNumber,
@@ -419,6 +440,211 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
       return bankFeeRecords.reduce((acc, curr) => acc + curr.amount, 0);
   }, [bankFeeRecords]);
 
+  // --- LOGIC: DEDICATED BIDANG, SUB. BIDANG & KEGIATAN ---
+  const activitySummaries = useMemo(() => {
+      const validLetters = letters.filter(l => !isAdminBankLetter(l));
+      const fieldsSet = new Set<string>();
+      const subFieldsSet = new Set<string>();
+      const activitiesSet = new Set<string>();
+      let totalRealized = 0;
+
+      validLetters.forEach(l => {
+          if (l.field && l.field.trim()) fieldsSet.add(l.field.trim());
+          if (l.subField && l.subField.trim()) subFieldsSet.add(`${l.field || ''} - ${l.subField.trim()}`);
+          if (l.activity && l.activity.trim()) activitiesSet.add(l.activity.trim());
+          if (l.status !== 'draft') {
+              totalRealized += l.totalAmount || 0;
+          }
+      });
+
+      return {
+          totalFields: fieldsSet.size || Object.keys(SUB_FIELDS).length,
+          totalSubFields: subFieldsSet.size,
+          totalActivities: activitiesSet.size,
+          totalRealized
+      };
+  }, [letters]);
+
+  const groupedActivities = useMemo(() => {
+      let list = letters.filter(l => !isAdminBankLetter(l));
+
+      // Filter by Search Term
+      if (searchTerm) {
+          const lowerTerm = searchTerm.toLowerCase();
+          list = list.filter(letter =>
+              (letter.letterNumber || '').toLowerCase().includes(lowerTerm) ||
+              (letter.pkaName || '').toLowerCase().includes(lowerTerm) ||
+              (letter.activity || '').toLowerCase().includes(lowerTerm) ||
+              (letter.field || '').toLowerCase().includes(lowerTerm) ||
+              (letter.subField || '').toLowerCase().includes(lowerTerm) ||
+              (letter.subject || '').toLowerCase().includes(lowerTerm)
+          );
+      }
+
+      // Filter by Filter Config
+      if (filterConfig.status) {
+          list = list.filter(l => l.status === filterConfig.status);
+      }
+      if (filterConfig.sourceFund) {
+          list = list.filter(l => l.sourceFund === filterConfig.sourceFund);
+      }
+      if (filterConfig.startDate) {
+          list = list.filter(l => l.date >= filterConfig.startDate);
+      }
+      if (filterConfig.endDate) {
+          list = list.filter(l => l.date <= filterConfig.endDate);
+      }
+      if (filterConfig.field) {
+          list = list.filter(l => l.field === filterConfig.field);
+      }
+      if (filterConfig.subField) {
+          list = list.filter(l => l.subField === filterConfig.subField);
+      }
+      if (filterConfig.activity) {
+          list = list.filter(l => l.activity === filterConfig.activity);
+      }
+
+      // Grouping map
+      const fieldMap = new Map<string, {
+          totalAmount: number;
+          lettersCount: number;
+          subFieldMap: Map<string, {
+              totalAmount: number;
+              lettersCount: number;
+              activityMap: Map<string, {
+                  totalAmount: number;
+                  letters: LetterData[];
+              }>;
+          }>;
+      }>();
+
+      list.forEach(letter => {
+          const fieldName = letter.field?.trim() || 'Bidang Lainnya / Belum Ditentukan';
+          const subFieldName = letter.subField?.trim() || 'Sub. Bidang Umum';
+          const activityName = letter.activity?.trim() || 'Kegiatan Umum';
+
+          if (!fieldMap.has(fieldName)) {
+              fieldMap.set(fieldName, { totalAmount: 0, lettersCount: 0, subFieldMap: new Map() });
+          }
+          const fieldEntry = fieldMap.get(fieldName)!;
+          fieldEntry.totalAmount += letter.totalAmount || 0;
+          fieldEntry.lettersCount += 1;
+
+          if (!fieldEntry.subFieldMap.has(subFieldName)) {
+              fieldEntry.subFieldMap.set(subFieldName, { totalAmount: 0, lettersCount: 0, activityMap: new Map() });
+          }
+          const subFieldEntry = fieldEntry.subFieldMap.get(subFieldName)!;
+          subFieldEntry.totalAmount += letter.totalAmount || 0;
+          subFieldEntry.lettersCount += 1;
+
+          if (!subFieldEntry.activityMap.has(activityName)) {
+              subFieldEntry.activityMap.set(activityName, { totalAmount: 0, letters: [] });
+          }
+          const actEntry = subFieldEntry.activityMap.get(activityName)!;
+          actEntry.totalAmount += letter.totalAmount || 0;
+          actEntry.letters.push(letter);
+      });
+
+      const groups: {
+          fieldName: string;
+          totalAmount: number;
+          lettersCount: number;
+          subFields: {
+              subFieldName: string;
+              totalAmount: number;
+              lettersCount: number;
+              activities: {
+                  activityName: string;
+                  totalAmount: number;
+                  letters: LetterData[];
+              }[];
+          }[];
+      }[] = [];
+
+      fieldMap.forEach((fieldVal, fieldName) => {
+          const subFieldsList: typeof groups[0]['subFields'] = [];
+          fieldVal.subFieldMap.forEach((subVal, subName) => {
+              const activitiesList: typeof subFieldsList[0]['activities'] = [];
+              subVal.activityMap.forEach((actVal, actName) => {
+                  activitiesList.push({
+                      activityName: actName,
+                      totalAmount: actVal.totalAmount,
+                      letters: actVal.letters.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  });
+              });
+              activitiesList.sort((a, b) => b.totalAmount - a.totalAmount);
+              subFieldsList.push({
+                  subFieldName: subName,
+                  totalAmount: subVal.totalAmount,
+                  lettersCount: subVal.lettersCount,
+                  activities: activitiesList
+              });
+          });
+          subFieldsList.sort((a, b) => b.totalAmount - a.totalAmount);
+          groups.push({
+              fieldName,
+              totalAmount: fieldVal.totalAmount,
+              lettersCount: fieldVal.lettersCount,
+              subFields: subFieldsList
+          });
+      });
+
+      const predefinedFieldKeys = Object.keys(SUB_FIELDS);
+      groups.sort((a, b) => {
+          const indexA = predefinedFieldKeys.indexOf(a.fieldName);
+          const indexB = predefinedFieldKeys.indexOf(b.fieldName);
+          if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+          if (indexA !== -1) return -1;
+          if (indexB !== -1) return 1;
+          return b.totalAmount - a.totalAmount;
+      });
+
+      // Sort flatList desc by date
+      const flatList = [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      return { groups, flatList };
+  }, [letters, searchTerm, filterConfig]);
+
+  const paginatedActivities = useMemo(() => {
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      return groupedActivities.flatList.slice(startIndex, startIndex + itemsPerPage);
+  }, [groupedActivities.flatList, currentPage, itemsPerPage]);
+
+  const toggleField = (fieldName: string) => {
+      setExpandedFields(prev => ({
+          ...prev,
+          [fieldName]: prev[fieldName] === false ? true : false
+      }));
+  };
+
+  const toggleSubField = (subKey: string) => {
+      setExpandedSubFields(prev => ({
+          ...prev,
+          [subKey]: prev[subKey] === false ? true : false
+      }));
+  };
+
+  const allExpanded = useMemo(() => {
+      return Object.values(expandedFields).every(v => v !== false) && Object.keys(expandedFields).length > 0;
+  }, [expandedFields]);
+
+  const toggleExpandAll = () => {
+      if (allExpanded) {
+          const newFields: Record<string, boolean> = {};
+          const newSubs: Record<string, boolean> = {};
+          groupedActivities.groups.forEach(g => {
+              newFields[g.fieldName] = false;
+              g.subFields.forEach(s => {
+                  newSubs[`${g.fieldName}__${s.subFieldName}`] = false;
+              });
+          });
+          setExpandedFields(newFields);
+          setExpandedSubFields(newSubs);
+      } else {
+          setExpandedFields({});
+          setExpandedSubFields({});
+      }
+  };
 
   // Pagination Helpers
   useEffect(() => {
@@ -428,10 +654,11 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
   const getPageNumbers = () => {
     let totalItems = 0;
     if (activeTab === 'letters') totalItems = sortedLetters.length;
+    else if (activeTab === 'activities') totalItems = groupedActivities.flatList.length;
     else if (activeTab === 'taxes') totalItems = taxRecords.length;
     else totalItems = bankFeeRecords.length;
 
-    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
     const pages = [];
     const maxVisible = 5;
     if (totalPages <= maxVisible) {
@@ -470,6 +697,25 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Arsip Surat");
         XLSX.writeFile(wb, `Arsip-Surat-Serang-${new Date().toISOString().split('T')[0]}.xlsx`);
+    } else if (activeTab === 'activities') {
+        // Export Rekap Bidang & Kegiatan
+        const data = groupedActivities.flatList.map((l, index) => ({
+            'No': index + 1,
+            'Bidang': l.field || '-',
+            'Sub. Bidang': l.subField || '-',
+            'Kegiatan': l.activity || '-',
+            'Nomor Dokumen (SPM)': l.letterNumber,
+            'Tanggal Dokumen': new Date(l.date).toLocaleDateString('id-ID'),
+            'Hal / Uraian': l.subject,
+            'Sumber Dana': l.sourceFund || '-',
+            'Total Realisasi (Rp)': l.totalAmount,
+            'PKA': l.pkaName || '-',
+            'Status': l.status === 'saved' ? 'Selesai' : l.status === 'archived' ? 'Terarsip' : 'Draft'
+        }));
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Rekap Bidang & Kegiatan");
+        XLSX.writeFile(wb, `Rekap-Bidang-Kegiatan-Serang-${new Date().toISOString().split('T')[0]}.xlsx`);
     } else if (activeTab === 'taxes') {
         // Export Pajak
         const data = taxRecords.map((r, index) => ({
@@ -643,6 +889,16 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                         <FileText size={16} className="mr-2" /> Data Surat
                     </button>
                     <button 
+                        onClick={() => { setActiveTab('activities'); resetFilters(); }}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center whitespace-nowrap flex-1 sm:flex-none justify-center ${
+                            activeTab === 'activities' 
+                            ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-sm' 
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                        }`}
+                    >
+                        <Layers size={16} className="mr-2" /> Bidang & Kegiatan
+                    </button>
+                    <button 
                         onClick={() => { setActiveTab('taxes'); resetFilters(); }}
                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center whitespace-nowrap flex-1 sm:flex-none justify-center ${
                             activeTab === 'taxes' 
@@ -672,7 +928,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                    </div>
                    <input
                      type="text"
-                     placeholder={activeTab === 'letters' ? "Cari No. Surat, PKA atau Hal..." : "Cari No. SPM atau Hal..."}
+                     placeholder={activeTab === 'letters' ? "Cari No. Surat, PKA atau Hal..." : activeTab === 'activities' ? "Cari Bidang, Kegiatan, atau Hal..." : "Cari No. SPM atau Hal..."}
                      className="w-full pl-10 pr-10 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none shadow-sm text-sm font-medium bg-white dark:bg-slate-800 text-black dark:text-white"
                      value={searchTerm}
                      onChange={(e) => setSearchTerm(e.target.value)}
@@ -816,7 +1072,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                         </div>
                     </div>
 
-                    {activeTab === 'letters' && (
+                    {(activeTab === 'letters' || activeTab === 'activities') && (
                         <>
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Status Surat</label>
@@ -863,7 +1119,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                     )}
                 </div>
 
-                {activeTab === 'letters' && (
+                {(activeTab === 'letters' || activeTab === 'activities') && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end pt-3 border-t border-slate-100 dark:border-slate-700/60">
                         {/* Filter Bidang */}
                         <div className="space-y-1">
@@ -930,7 +1186,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                     </div>
                 )}
 
-                {activeTab !== 'letters' && (
+                {activeTab !== 'letters' && activeTab !== 'activities' && (
                     <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-700/60">
                         <button 
                             onClick={resetFilters} 
@@ -1003,7 +1259,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                         <div className="flex items-center">Total {getSortIcon('totalAmount')}</div>
                                     </th>
                                     <th className="w-32 px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
-                                    <th className="w-48 px-6 py-4 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Aksi</th>
+                                    <th className="w-20 px-2 py-4 text-center text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
@@ -1018,7 +1274,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                     paginatedLetters.map((letter, index) => {
                                         const globalIndex = (currentPage - 1) * itemsPerPage + index + 1;
                                         return (
-                                            <tr key={letter.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
+                                            <tr key={`${letter.id}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
                                                 <td className="px-4 py-4 whitespace-nowrap text-xs font-black text-slate-400 dark:text-slate-500 text-center">
                                                     {globalIndex}
                                                 </td>
@@ -1029,29 +1285,13 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                                     {letter.letterNumber}
                                                 </td>
                                                 <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
-                                                    {/* Baris Hal */}
+                                                    {/* Baris Hal: Bersih dan rapi tanpa menumpuk */}
                                                     <div className="font-semibold text-slate-900 dark:text-slate-100 leading-snug line-clamp-2" title={letter.subject}>
                                                         {letter.subject}
                                                     </div>
 
-                                                    {/* Munculkan setelah baris "Hal": Bidang, Sub. Bidang, Kegiatan */}
-                                                    <div className="mt-2 space-y-1 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 text-xs">
-                                                        <div className="flex items-start">
-                                                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">Bidang:</span>
-                                                            <span className="text-teal-700 dark:text-teal-300 font-semibold">{letter.field || '-'}</span>
-                                                        </div>
-                                                        <div className="flex items-start">
-                                                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">Sub. Bidang:</span>
-                                                            <span className="text-sky-700 dark:text-sky-300 font-semibold">{letter.subField || '-'}</span>
-                                                        </div>
-                                                        <div className="flex items-start">
-                                                            <span className="font-bold text-slate-500 dark:text-slate-400 w-24 shrink-0">Kegiatan:</span>
-                                                            <span className="text-slate-700 dark:text-slate-200 font-medium leading-relaxed">{letter.activity || '-'}</span>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Metadata: PKA dan Sumber Dana */}
-                                                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                                                    {/* Metadata ringkas segaris: PKA, Sumber Dana, dan Akses Cepat ke Halaman Bidang & Kegiatan */}
+                                                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
                                                         <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-tight bg-slate-100 dark:bg-slate-700/80 px-2 py-0.5 rounded">
                                                             PKA: {letter.pkaName || '-'}
                                                         </span>
@@ -1059,6 +1299,26 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                                             <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded font-bold border border-emerald-200 dark:border-emerald-800">
                                                                 {letter.sourceFund}
                                                             </span>
+                                                        )}
+                                                        {letter.field && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setFilterConfig(prev => ({ 
+                                                                        ...prev, 
+                                                                        field: letter.field || '', 
+                                                                        subField: letter.subField || '', 
+                                                                        activity: letter.activity || '' 
+                                                                    }));
+                                                                    setActiveTab('activities');
+                                                                }}
+                                                                className="inline-flex items-center gap-1 text-[10px] bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/60 px-2 py-0.5 rounded font-semibold border border-teal-200/80 dark:border-teal-800 transition-colors"
+                                                                title="Buka rincian lengkap di halaman Bidang & Kegiatan"
+                                                            >
+                                                                <Layers size={10} />
+                                                                <span className="max-w-[150px] truncate">{letter.activity || letter.field}</span>
+                                                            </button>
                                                         )}
                                                     </div>
                                                 </td>
@@ -1068,25 +1328,29 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     {getStatusBadge(letter.status)}
                                                 </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex justify-end space-x-2 items-center">
+                                                <td className="px-2 py-3 text-center align-middle whitespace-nowrap">
+                                                    {/* IKON AKSI KE BAWAH (VERTICAL) DENGAN WARNA KHAS */}
+                                                    <div className="flex flex-col items-center justify-center gap-1.5 py-1">
+                                                        {/* 1. CETAK (Hijau/Emerald) */}
                                                         <div className="relative print-menu-container">
                                                             <button 
+                                                                type="button"
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setActivePrintMenu(activePrintMenu === letter.id ? null : letter.id);
                                                                 }}
-                                                                className={`p-2 rounded-lg transition-all ${
+                                                                className={`p-1.5 rounded-lg border transition-all flex items-center justify-center shadow-xs ${
                                                                     activePrintMenu === letter.id 
-                                                                    ? 'bg-teal-600 text-white shadow-md' 
-                                                                    : 'text-slate-400 dark:text-slate-500 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30'
+                                                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-400' 
+                                                                    : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800/80 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 hover:text-emerald-700 hover:scale-105'
                                                                 }`}
+                                                                title="Cetak Surat (SPM, SPP, BA, Tanda Terima)"
                                                             >
-                                                                <Printer size={18} />
+                                                                <Printer size={16} />
                                                             </button>
                                                             
                                                             {activePrintMenu === letter.id && (
-                                                                <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-[70] animate-scale-up origin-top-right p-1">
+                                                                <div className="absolute right-full top-0 mr-2 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-[80] animate-scale-up origin-top-right p-1 text-left">
                                                                     <button onClick={() => { if(settingsData) generateSPM(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/30 text-slate-700 dark:text-slate-200 hover:text-teal-700 dark:hover:text-teal-400 text-xs font-bold flex items-center transition-colors mb-1">
                                                                         <FileText size={14} className="mr-2 text-teal-600 dark:text-teal-400" /> Cetak SPM
                                                                     </button>
@@ -1102,9 +1366,36 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <button onClick={() => handleCopy(letter)} className="p-2 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Salin"><Copy size={18} /></button>
-                                                        <button onClick={() => onEdit(letter)} className="p-2 text-slate-400 dark:text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors" title="Edit"><Edit size={18} /></button>
-                                                        <button onClick={() => handleDeleteClick(letter.id)} className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={18} /></button>
+
+                                                        {/* 2. SALIN (Biru) */}
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => handleCopy(letter)} 
+                                                            className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/80 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:text-blue-700 hover:scale-105 rounded-lg transition-all shadow-xs flex items-center justify-center" 
+                                                            title="Salin Data Surat"
+                                                        >
+                                                            <Copy size={16} />
+                                                        </button>
+
+                                                        {/* 3. EDIT (Kuning/Amber) */}
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => onEdit(letter)} 
+                                                            className="p-1.5 bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/80 hover:bg-amber-100 dark:hover:bg-amber-900/60 hover:text-amber-700 hover:scale-105 rounded-lg transition-all shadow-xs flex items-center justify-center" 
+                                                            title="Edit Surat"
+                                                        >
+                                                            <Edit size={16} />
+                                                        </button>
+
+                                                        {/* 4. HAPUS (Merah/Rose) */}
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => handleDeleteClick(letter.id)} 
+                                                            className="p-1.5 bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800/80 hover:bg-rose-100 dark:hover:bg-rose-900/60 hover:text-rose-700 hover:scale-105 rounded-lg transition-all shadow-xs flex items-center justify-center" 
+                                                            title="Hapus Surat"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1115,6 +1406,517 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                         </table>
                     </div>
                 </div>
+            </div>
+        ) : activeTab === 'activities' ? (
+            /* --- TAB: DEDICATED BIDANG, SUB. BIDANG & KEGIATAN --- */
+            <div key="activities-tab" className="space-y-6 animate-fade-in">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Total Bidang */}
+                    <div className="bg-gradient-to-br from-teal-600 to-emerald-700 dark:from-teal-800 dark:to-emerald-950 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden group">
+                        <div className="relative z-10">
+                            <p className="text-teal-100 text-xs font-bold uppercase tracking-wider mb-1">Bidang APBDes</p>
+                            <h3 className="text-3xl font-black">{activitySummaries.totalFields}</h3>
+                            <p className="text-teal-100 text-[10px] mt-1 opacity-80 flex items-center">
+                                <Layers size={12} className="mr-1" /> Klasifikasi Utama
+                            </p>
+                        </div>
+                        <Layers size={72} className="absolute -right-3 -bottom-6 opacity-20 group-hover:scale-110 transition-transform duration-500" />
+                    </div>
+
+                    {/* Total Sub. Bidang */}
+                    <div className="bg-gradient-to-br from-cyan-600 to-blue-700 dark:from-cyan-800 dark:to-blue-950 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden group">
+                        <div className="relative z-10">
+                            <p className="text-cyan-100 text-xs font-bold uppercase tracking-wider mb-1">Sub. Bidang</p>
+                            <h3 className="text-3xl font-black">{activitySummaries.totalSubFields}</h3>
+                            <p className="text-cyan-100 text-[10px] mt-1 opacity-80 flex items-center">
+                                <Folder size={12} className="mr-1" /> Rincian Klaster
+                            </p>
+                        </div>
+                        <Folder size={72} className="absolute -right-3 -bottom-6 opacity-20 group-hover:scale-110 transition-transform duration-500" />
+                    </div>
+
+                    {/* Total Kegiatan */}
+                    <div className="bg-gradient-to-br from-indigo-600 to-violet-700 dark:from-indigo-800 dark:to-violet-950 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden group">
+                        <div className="relative z-10">
+                            <p className="text-indigo-100 text-xs font-bold uppercase tracking-wider mb-1">Kegiatan Terdata</p>
+                            <h3 className="text-3xl font-black">{activitySummaries.totalActivities}</h3>
+                            <p className="text-indigo-100 text-[10px] mt-1 opacity-80 flex items-center">
+                                <FolderKanban size={12} className="mr-1" /> Paket Kegiatan
+                            </p>
+                        </div>
+                        <FolderKanban size={72} className="absolute -right-3 -bottom-6 opacity-20 group-hover:scale-110 transition-transform duration-500" />
+                    </div>
+
+                    {/* Total Realisasi Belanja */}
+                    <div className="bg-gradient-to-br from-emerald-600 to-teal-800 dark:from-emerald-800 dark:to-teal-950 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden group">
+                        <div className="relative z-10">
+                            <p className="text-emerald-100 text-xs font-bold uppercase tracking-wider mb-1">Total Realisasi</p>
+                            <h3 className="text-2xl font-black">Rp {activitySummaries.totalRealized.toLocaleString('id-ID')}</h3>
+                            <p className="text-emerald-100 text-[10px] mt-1 opacity-80 flex items-center">
+                                <Wallet size={12} className="mr-1" /> Total Belanja Terarsip
+                            </p>
+                        </div>
+                        <Wallet size={72} className="absolute -right-3 -bottom-6 opacity-20 group-hover:scale-110 transition-transform duration-500" />
+                    </div>
+                </div>
+
+                {/* Sub-Header & Mode Switcher Bar */}
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                        <h3 className="text-base font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            <Layers className="text-teal-600 dark:text-teal-400" size={20} />
+                            Halaman Khusus: Bidang, Sub. Bidang & Kegiatan
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Menampilkan seluruh data surat yang dikelompokkan terpisah dan terorganisir rapi per pos kegiatan
+                        </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        {activityViewMode === 'hierarchy' && (
+                            <button
+                                type="button"
+                                onClick={toggleExpandAll}
+                                className="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-all border border-slate-200 dark:border-slate-600 flex items-center gap-1.5"
+                            >
+                                {allExpanded ? (
+                                    <>
+                                        <ChevronUp size={14} /> Tutup Semua
+                                    </>
+                                ) : (
+                                    <>
+                                        <ChevronDown size={14} /> Buka Semua
+                                    </>
+                                )}
+                            </button>
+                        )}
+
+                        {/* View Switcher: Hierarki vs Tabel */}
+                        <div className="flex bg-slate-100 dark:bg-slate-700/80 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
+                            <button
+                                type="button"
+                                onClick={() => setActivityViewMode('hierarchy')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    activityViewMode === 'hierarchy'
+                                    ? 'bg-white dark:bg-slate-800 text-teal-700 dark:text-teal-300 shadow-sm'
+                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                                }`}
+                            >
+                                <FolderKanban size={14} /> Struktur Pohon
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActivityViewMode('table')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    activityViewMode === 'table'
+                                    ? 'bg-white dark:bg-slate-800 text-teal-700 dark:text-teal-300 shadow-sm'
+                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                                }`}
+                            >
+                                <List size={14} /> Matriks Tabel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* HIERARCHY TREE VIEW */}
+                {activityViewMode === 'hierarchy' ? (
+                    <div className="space-y-4">
+                        {groupedActivities.groups.length === 0 ? (
+                            <div className="bg-white dark:bg-slate-800 rounded-2xl p-16 text-center border border-slate-200 dark:border-slate-700 shadow-sm text-slate-400 dark:text-slate-500">
+                                <Layers size={48} className="mx-auto mb-3 opacity-20" />
+                                <p className="font-medium text-sm">Tidak ditemukan kegiatan atau dokumen dengan kriteria pencarian ini.</p>
+                            </div>
+                        ) : (
+                            groupedActivities.groups.map(group => {
+                                const isFieldExpanded = expandedFields[group.fieldName] !== false;
+                                return (
+                                    <div 
+                                        key={group.fieldName} 
+                                        className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md overflow-hidden transition-all duration-200"
+                                    >
+                                        {/* BIDANG HEADER ACCORDION */}
+                                        <div 
+                                            onClick={() => toggleField(group.fieldName)}
+                                            className="px-6 py-4 bg-gradient-to-r from-teal-50 via-white to-slate-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-900/60 border-b border-slate-200/80 dark:border-slate-700 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 select-none hover:bg-teal-100/30 dark:hover:bg-slate-700/40 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-black shadow-md shadow-teal-500/20 shrink-0">
+                                                    <Layers size={20} />
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-teal-700 dark:text-teal-400 bg-teal-100/70 dark:bg-teal-900/40 px-2 py-0.5 rounded">
+                                                        BIDANG
+                                                    </span>
+                                                    <h4 className="text-base font-extrabold text-slate-900 dark:text-white mt-0.5 leading-snug">
+                                                        {group.fieldName}
+                                                    </h4>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-4 self-end md:self-auto">
+                                                <div className="text-right">
+                                                    <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 block">
+                                                        {group.subFields.length} Sub. Bidang • {group.lettersCount} Dokumen
+                                                    </span>
+                                                    <span className="text-base font-black text-teal-800 dark:text-teal-300 font-mono">
+                                                        Rp {group.totalAmount.toLocaleString('id-ID')}
+                                                    </span>
+                                                </div>
+                                                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-300 shrink-0">
+                                                    {isFieldExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* SUB. BIDANG & KEGIATAN CONTAINER */}
+                                        {isFieldExpanded && (
+                                            <div className="p-4 sm:p-6 space-y-5 bg-slate-50/60 dark:bg-slate-900/40">
+                                                {group.subFields.map(sub => {
+                                                    const subKey = `${group.fieldName}__${sub.subFieldName}`;
+                                                    const isSubExpanded = expandedSubFields[subKey] !== false;
+                                                    return (
+                                                        <div 
+                                                            key={subKey} 
+                                                            className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200/90 dark:border-slate-700/80 shadow-sm overflow-hidden"
+                                                        >
+                                                            {/* SUB. BIDANG HEADER */}
+                                                            <div 
+                                                                onClick={() => toggleSubField(subKey)}
+                                                                className="px-5 py-3.5 bg-slate-100/70 dark:bg-slate-800/90 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 dark:border-slate-700 select-none transition-colors"
+                                                            >
+                                                                <div className="flex items-center gap-2.5">
+                                                                    <Folder size={18} className="text-cyan-600 dark:text-cyan-400 shrink-0" />
+                                                                    <div>
+                                                                        <span className="text-[9px] font-extrabold uppercase tracking-wider text-cyan-700 dark:text-cyan-400 mr-2">
+                                                                            SUB. BIDANG:
+                                                                        </span>
+                                                                        <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                                                                            {sub.subFieldName}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-3 self-end sm:self-auto">
+                                                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                                                        {sub.activities.length} Kegiatan ({sub.lettersCount} Dokumen)
+                                                                    </span>
+                                                                    <span className="text-sm font-black text-cyan-700 dark:text-cyan-300 font-mono">
+                                                                        Rp {sub.totalAmount.toLocaleString('id-ID')}
+                                                                    </span>
+                                                                    <div className="text-slate-400">
+                                                                        {isSubExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* KEGIATAN & DAFTAR SURAT */}
+                                                            {isSubExpanded && (
+                                                                <div className="p-4 space-y-4">
+                                                                    {sub.activities.map(act => (
+                                                                        <div 
+                                                                            key={act.activityName} 
+                                                                            className="rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-900/50 p-4 space-y-3"
+                                                                        >
+                                                                            {/* Baris Nama Kegiatan & Subtotal */}
+                                                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-700/80">
+                                                                                <div className="flex items-start gap-2">
+                                                                                    <div className="w-2 h-2 rounded-full bg-teal-500 mt-2 shrink-0"></div>
+                                                                                    <div>
+                                                                                        <span className="text-[10px] font-black uppercase text-teal-700 dark:text-teal-400 tracking-wider">
+                                                                                            NAMA KEGIATAN
+                                                                                        </span>
+                                                                                        <h5 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                                                                                            {act.activityName}
+                                                                                        </h5>
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <div className="flex items-center gap-2 self-end sm:self-auto">
+                                                                                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                                                                                        {act.letters.length} Dokumen:
+                                                                                    </span>
+                                                                                    <span className="text-sm font-black text-emerald-700 dark:text-emerald-400 font-mono">
+                                                                                        Rp {act.totalAmount.toLocaleString('id-ID')}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* DAFTAR DOKUMEN ARSIP DALAM KEGIATAN INI */}
+                                                                            <div className="space-y-2">
+                                                                                {act.letters.map((letter, idx) => (
+                                                                                    <div 
+                                                                                        key={`${letter.id}-${idx}`} 
+                                                                                        className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/70 hover:border-teal-300 dark:hover:border-teal-600 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs"
+                                                                                    >
+                                                                                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                                                                                            <span className="text-xs font-bold text-slate-400 dark:text-slate-500 pt-0.5">
+                                                                                                #{idx + 1}
+                                                                                            </span>
+                                                                                            <div className="space-y-1 flex-1 min-w-0">
+                                                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                                                    <span className="text-xs font-extrabold text-teal-700 dark:text-teal-400 font-mono">
+                                                                                                        {letter.letterNumber}
+                                                                                                    </span>
+                                                                                                    <span className="text-xs text-slate-400">
+                                                                                                        • {new Date(letter.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                                                                    </span>
+                                                                                                    {letter.sourceFund && (
+                                                                                                        <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded font-bold border border-emerald-200 dark:border-emerald-800">
+                                                                                                            {letter.sourceFund}
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                    {getStatusBadge(letter.status)}
+                                                                                                </div>
+                                                                                                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 line-clamp-2" title={letter.subject}>
+                                                                                                    {letter.subject}
+                                                                                                </div>
+                                                                                                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                                                                                                    PKA: <span className="font-semibold text-slate-700 dark:text-slate-300">{letter.pkaName || '-'}</span>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+
+                                                                                        <div className="flex items-center justify-between md:justify-end gap-3 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-slate-700 shrink-0">
+                                                                                            <div className="text-right">
+                                                                                                <span className="text-sm font-black text-slate-900 dark:text-white font-mono block">
+                                                                                                    Rp {letter.totalAmount.toLocaleString('id-ID')}
+                                                                                                </span>
+                                                                                            </div>
+
+                                                                                            <div className="flex flex-col items-center justify-center gap-1.5 shrink-0">
+                                                                                                {/* 1. CETAK (Hijau/Emerald) */}
+                                                                                                <div className="relative print-menu-container">
+                                                                                                    <button 
+                                                                                                        type="button"
+                                                                                                        onClick={(e) => {
+                                                                                                            e.stopPropagation();
+                                                                                                            setActivePrintMenu(activePrintMenu === letter.id ? null : letter.id);
+                                                                                                        }}
+                                                                                                        className={`p-1.5 rounded-lg border transition-all flex items-center justify-center shadow-xs ${
+                                                                                                            activePrintMenu === letter.id 
+                                                                                                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-400' 
+                                                                                                            : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800/80 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 hover:text-emerald-700 hover:scale-105'
+                                                                                                        }`}
+                                                                                                        title="Cetak Dokumen (SPM, SPP, BA, Tanda Terima)"
+                                                                                                    >
+                                                                                                        <Printer size={15} />
+                                                                                                    </button>
+                                                                                                    
+                                                                                                    {activePrintMenu === letter.id && (
+                                                                                                        <div className="absolute right-full top-0 mr-2 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-[80] animate-scale-up origin-top-right p-1 text-left">
+                                                                                                            <button onClick={() => { if(settingsData) generateSPM(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/30 text-slate-700 dark:text-slate-200 hover:text-teal-700 dark:hover:text-teal-400 text-xs font-bold flex items-center transition-colors mb-1">
+                                                                                                                <FileText size={14} className="mr-2 text-teal-600 dark:text-teal-400" /> Cetak SPM
+                                                                                                            </button>
+                                                                                                            <button onClick={() => { if(settingsData) generateSPP(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-700 dark:text-slate-200 hover:text-blue-700 dark:hover:text-blue-400 text-xs font-bold flex items-center transition-colors mb-1">
+                                                                                                                <FileText size={14} className="mr-2 text-blue-600 dark:text-blue-400" /> Cetak SPP
+                                                                                                            </button>
+                                                                                                            <button onClick={() => { if(settingsData) generateBA(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/30 text-slate-700 dark:text-slate-200 hover:text-amber-700 dark:hover:text-amber-400 text-xs font-bold flex items-center transition-colors mb-1">
+                                                                                                                <FileText size={14} className="mr-2 text-amber-600 dark:text-amber-400" /> Cetak Berita Acara
+                                                                                                            </button>
+                                                                                                            <button onClick={() => { if(settingsData) generateTandaTerima(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/30 text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-400 text-xs font-bold flex items-center transition-colors">
+                                                                                                                <FileText size={14} className="mr-2 text-rose-500 dark:text-rose-400" /> Cetak Tanda Terima
+                                                                                                            </button>
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                </div>
+
+                                                                                                {/* 2. SALIN (Biru) */}
+                                                                                                <button 
+                                                                                                    type="button"
+                                                                                                    onClick={() => handleCopy(letter)} 
+                                                                                                    className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/80 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:text-blue-700 hover:scale-105 rounded-lg transition-all shadow-xs flex items-center justify-center" 
+                                                                                                    title="Salin Data Dokumen"
+                                                                                                >
+                                                                                                    <Copy size={15} />
+                                                                                                </button>
+
+                                                                                                {/* 3. EDIT (Kuning/Amber) */}
+                                                                                                <button 
+                                                                                                    type="button"
+                                                                                                    onClick={() => onEdit(letter)} 
+                                                                                                    className="p-1.5 bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/80 hover:bg-amber-100 dark:hover:bg-amber-900/60 hover:text-amber-700 hover:scale-105 rounded-lg transition-all shadow-xs flex items-center justify-center" 
+                                                                                                    title="Edit Dokumen"
+                                                                                                >
+                                                                                                    <Edit size={15} />
+                                                                                                </button>
+
+                                                                                                {/* 4. HAPUS (Merah/Rose) */}
+                                                                                                <button 
+                                                                                                    type="button"
+                                                                                                    onClick={() => handleDeleteClick(letter.id)} 
+                                                                                                    className="p-1.5 bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800/80 hover:bg-rose-100 dark:hover:bg-rose-900/60 hover:text-rose-700 hover:scale-105 rounded-lg transition-all shadow-xs flex items-center justify-center" 
+                                                                                                    title="Hapus Dokumen"
+                                                                                                >
+                                                                                                    <Trash2 size={15} />
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                ) : (
+                    /* FLAT MATRIX TABLE VIEW */
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col">
+                        <div className="overflow-x-auto w-full">
+                            <table className="w-full divide-y divide-slate-200 dark:divide-slate-700 table-fixed">
+                                <thead className="bg-teal-50/70 dark:bg-teal-950/40 sticky top-0 z-20">
+                                    <tr>
+                                        <th className="w-12 px-3 py-3 text-center text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">No</th>
+                                        <th className="w-48 px-4 py-3 text-left text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">Bidang</th>
+                                        <th className="w-44 px-4 py-3 text-left text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">Sub. Bidang</th>
+                                        <th className="w-56 px-4 py-3 text-left text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">Kegiatan</th>
+                                        <th className="w-44 px-4 py-3 text-left text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">No. Surat</th>
+                                        <th className="min-w-[220px] px-4 py-3 text-left text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">Hal & PKA</th>
+                                        <th className="w-28 px-3 py-3 text-left text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">Tgl</th>
+                                        <th className="w-24 px-3 py-3 text-center text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">Sumber</th>
+                                        <th className="w-36 px-4 py-3 text-right text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">Realisasi (Rp)</th>
+                                        <th className="w-24 px-3 py-3 text-center text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">Status</th>
+                                        <th className="w-20 px-2 py-3 text-center text-xs font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
+                                    {paginatedActivities.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={11} className="px-6 py-20 text-center text-slate-400 dark:text-slate-500">
+                                                <Layers size={48} className="mx-auto mb-4 opacity-20" />
+                                                Tidak ada dokumen kegiatan yang sesuai dengan filter.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        paginatedActivities.map((letter, index) => {
+                                            const globalIndex = (currentPage - 1) * itemsPerPage + index + 1;
+                                            return (
+                                                <tr key={`${letter.id}-${index}`} className="hover:bg-teal-50/40 dark:hover:bg-slate-700/40 transition-colors">
+                                                    <td className="px-3 py-3.5 whitespace-nowrap text-xs font-black text-slate-400 text-center">
+                                                        {globalIndex}
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-xs font-semibold text-slate-700 dark:text-slate-300 truncate" title={letter.field}>
+                                                        {letter.field || '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-xs text-slate-600 dark:text-slate-400 truncate" title={letter.subField}>
+                                                        {letter.subField || '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-xs font-bold text-teal-700 dark:text-teal-400 truncate" title={letter.activity}>
+                                                        {letter.activity || '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-xs font-bold text-slate-900 dark:text-slate-100 font-mono truncate" title={letter.letterNumber}>
+                                                        {letter.letterNumber}
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-xs text-slate-700 dark:text-slate-300">
+                                                        <div className="line-clamp-2 leading-relaxed font-medium" title={letter.subject}>
+                                                            {letter.subject}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                                            PKA: {letter.pkaName || '-'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-3.5 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+                                                        {new Date(letter.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                                                    </td>
+                                                    <td className="px-3 py-3.5 text-center whitespace-nowrap">
+                                                        <span className="text-[10px] px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 rounded font-bold border border-emerald-200 dark:border-emerald-800">
+                                                            {letter.sourceFund || '-'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3.5 whitespace-nowrap text-right text-xs font-mono font-bold text-slate-900 dark:text-white">
+                                                        Rp {letter.totalAmount.toLocaleString('id-ID')}
+                                                    </td>
+                                                    <td className="px-3 py-3.5 text-center whitespace-nowrap">
+                                                        {getStatusBadge(letter.status)}
+                                                    </td>
+                                                    <td className="px-2 py-3 text-center align-middle whitespace-nowrap">
+                                                        <div className="flex flex-col items-center justify-center gap-1.5 py-1">
+                                                            {/* 1. CETAK (Hijau/Emerald) */}
+                                                            <div className="relative print-menu-container">
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setActivePrintMenu(activePrintMenu === letter.id ? null : letter.id);
+                                                                    }}
+                                                                    className={`p-1.5 rounded-lg border transition-all flex items-center justify-center shadow-xs ${
+                                                                        activePrintMenu === letter.id 
+                                                                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-400' 
+                                                                        : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800/80 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 hover:text-emerald-700 hover:scale-105'
+                                                                    }`}
+                                                                    title="Cetak Dokumen"
+                                                                >
+                                                                    <Printer size={15} />
+                                                                </button>
+                                                                {activePrintMenu === letter.id && (
+                                                                    <div className="absolute right-full top-0 mr-2 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-[80] animate-scale-up origin-top-right p-1 text-left">
+                                                                        <button onClick={() => { if(settingsData) generateSPM(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/30 text-slate-700 dark:text-slate-200 hover:text-teal-700 dark:hover:text-teal-400 text-xs font-bold flex items-center transition-colors mb-1">
+                                                                            <FileText size={14} className="mr-2 text-teal-600 dark:text-teal-400" /> Cetak SPM
+                                                                        </button>
+                                                                        <button onClick={() => { if(settingsData) generateSPP(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-700 dark:text-slate-200 hover:text-blue-700 dark:hover:text-blue-400 text-xs font-bold flex items-center transition-colors mb-1">
+                                                                            <FileText size={14} className="mr-2 text-blue-600 dark:text-blue-400" /> Cetak SPP
+                                                                        </button>
+                                                                        <button onClick={() => { if(settingsData) generateBA(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/30 text-slate-700 dark:text-slate-200 hover:text-amber-700 dark:hover:text-amber-400 text-xs font-bold flex items-center transition-colors mb-1">
+                                                                            <FileText size={14} className="mr-2 text-amber-600 dark:text-amber-400" /> Cetak Berita Acara
+                                                                        </button>
+                                                                        <button onClick={() => { if(settingsData) generateTandaTerima(letter, settingsData); setActivePrintMenu(null); }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/30 text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-400 text-xs font-bold flex items-center transition-colors">
+                                                                            <FileText size={14} className="mr-2 text-rose-500 dark:text-rose-400" /> Cetak Tanda Terima
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* 2. SALIN (Biru) */}
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => handleCopy(letter)} 
+                                                                className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/80 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:text-blue-700 hover:scale-105 rounded-lg transition-all shadow-xs flex items-center justify-center" 
+                                                                title="Salin Data"
+                                                            >
+                                                                <Copy size={15} />
+                                                            </button>
+
+                                                            {/* 3. EDIT (Kuning/Amber) */}
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => onEdit(letter)} 
+                                                                className="p-1.5 bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/80 hover:bg-amber-100 dark:hover:bg-amber-900/60 hover:text-amber-700 hover:scale-105 rounded-lg transition-all shadow-xs flex items-center justify-center" 
+                                                                title="Edit"
+                                                            >
+                                                                <Edit size={15} />
+                                                            </button>
+
+                                                            {/* 4. HAPUS (Merah/Rose) */}
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => handleDeleteClick(letter.id)} 
+                                                                className="p-1.5 bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800/80 hover:bg-rose-100 dark:hover:bg-rose-900/60 hover:text-rose-700 hover:scale-105 rounded-lg transition-all shadow-xs flex items-center justify-center" 
+                                                                title="Hapus"
+                                                            >
+                                                                <Trash2 size={15} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
         ) : activeTab === 'taxes' ? (
             /* --- TAB: TAX CONTAINER --- */
@@ -1185,7 +1987,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                     paginatedTaxRecords.map((record, index) => {
                                         const globalIndex = (currentPage - 1) * itemsPerPage + index + 1;
                                         return (
-                                            <tr key={record.id} className="hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-colors">
+                                            <tr key={`${record.id}-${index}`} className="hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-colors">
                                                 <td className="px-4 py-4 whitespace-nowrap text-xs font-black text-slate-400 dark:text-slate-500 text-center">
                                                     {globalIndex}
                                                 </td>
@@ -1278,7 +2080,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                     paginatedBankRecords.map((record, index) => {
                                         const globalIndex = (currentPage - 1) * itemsPerPage + index + 1;
                                         return (
-                                            <tr key={record.id} className="hover:bg-orange-50/50 dark:hover:bg-orange-900/20 transition-colors">
+                                            <tr key={`${record.id}-${index}`} className="hover:bg-orange-50/50 dark:hover:bg-orange-900/20 transition-colors">
                                                 <td className="px-4 py-4 whitespace-nowrap text-xs font-black text-slate-400 dark:text-slate-500 text-center">
                                                     {globalIndex}
                                                 </td>
@@ -1312,10 +2114,10 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
         )}
 
         {/* Pagination Controls */}
-        {(activeTab === 'letters' ? sortedLetters.length > 0 : activeTab === 'taxes' ? taxRecords.length > 0 : bankFeeRecords.length > 0) && (
+        {(activeTab === 'letters' ? sortedLetters.length > 0 : activeTab === 'activities' ? (activityViewMode === 'table' && groupedActivities.flatList.length > 0) : activeTab === 'taxes' ? taxRecords.length > 0 : bankFeeRecords.length > 0) && (
             <div className="bg-slate-50 dark:bg-slate-800 px-6 py-6 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4 rounded-b-2xl">
                 <div className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
-                    Menampilkan {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, activeTab === 'letters' ? sortedLetters.length : activeTab === 'taxes' ? taxRecords.length : bankFeeRecords.length)} dari {activeTab === 'letters' ? sortedLetters.length : activeTab === 'taxes' ? taxRecords.length : bankFeeRecords.length} data
+                    Menampilkan {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, activeTab === 'letters' ? sortedLetters.length : activeTab === 'activities' ? groupedActivities.flatList.length : activeTab === 'taxes' ? taxRecords.length : bankFeeRecords.length)} dari {activeTab === 'letters' ? sortedLetters.length : activeTab === 'activities' ? groupedActivities.flatList.length : activeTab === 'taxes' ? taxRecords.length : bankFeeRecords.length} data
                 </div>
                 
                 <div className="flex items-center space-x-2">
@@ -1337,7 +2139,7 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
                                     onClick={() => setCurrentPage(Number(page))}
                                     className={`w-10 h-10 rounded-xl text-sm font-bold transition-all border ${
                                         currentPage === page 
-                                        ? (activeTab === 'letters' ? 'bg-teal-600 border-teal-600 shadow-teal-200 dark:shadow-teal-900/40' : activeTab === 'taxes' ? 'bg-purple-600 border-purple-600 shadow-purple-200 dark:shadow-purple-900/40' : 'bg-orange-600 border-orange-600 shadow-orange-200 dark:shadow-orange-900/40') + ' text-white shadow-lg'
+                                        ? ((activeTab === 'letters' || activeTab === 'activities') ? 'bg-teal-600 border-teal-600 shadow-teal-200 dark:shadow-teal-900/40' : activeTab === 'taxes' ? 'bg-purple-600 border-purple-600 shadow-purple-200 dark:shadow-purple-900/40' : 'bg-orange-600 border-orange-600 shadow-orange-200 dark:shadow-orange-900/40') + ' text-white shadow-lg'
                                         : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-slate-400'
                                     }`}
                                 >

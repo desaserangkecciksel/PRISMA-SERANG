@@ -316,26 +316,46 @@ export const StorageService = {
     let settings = INITIAL_SETTINGS;
 
     // Load Local first
+    let hasLocalSettings = false;
     try {
         const localRaw = localStorage.getItem(LS_KEYS.SETTINGS);
         if (localRaw) {
             settings = { ...settings, ...JSON.parse(localRaw) };
+            hasLocalSettings = true;
         }
     } catch (e) {}
 
-    // Merge Cloud data if accessible within timeout
+    // If there is a pending settings sync, try flushing it before pulling from cloud
+    const pendingBefore = getPendingQueue().some(q => q.action === 'saveSettings');
+    if (pendingBefore) {
+        await StorageService.flushPendingSync().catch(() => {});
+    }
+
+    // If still pending (offline or cloud save failed), keep local settings without overwriting with stale cloud data
+    const stillPending = getPendingQueue().some(q => q.action === 'saveSettings');
+    if (stillPending && hasLocalSettings) {
+        return settings;
+    }
+
+    // Merge Cloud data if accessible within timeout and not older than local settings
     try {
         const cloudData = await callApi('settings', 'GET', null, {}, 3000);
         if (cloudData && typeof cloudData === 'object') {
-            settings = { 
-                ...settings, 
-                ...cloudData,
-                budgetAllocations: {
-                    ...settings.budgetAllocations,
-                    ...(cloudData.budgetAllocations || {})
-                }
-            };
-            localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(settings));
+            const localTime = settings.settingsUpdatedAt ? Date.parse(settings.settingsUpdatedAt) : 0;
+            const cloudTime = cloudData.settingsUpdatedAt ? Date.parse(cloudData.settingsUpdatedAt) : 0;
+            const localIsNewer = hasLocalSettings && localTime > 0 && (cloudTime === 0 || localTime > cloudTime);
+
+            if (!localIsNewer) {
+                settings = { 
+                    ...settings, 
+                    ...cloudData,
+                    budgetAllocations: {
+                        ...settings.budgetAllocations,
+                        ...(cloudData.budgetAllocations || {})
+                    }
+                };
+                localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(settings));
+            }
         }
     } catch (e) {}
     
@@ -343,18 +363,32 @@ export const StorageService = {
   },
 
   saveSettings: async (settings: AppSettings): Promise<void> => {
+    const stampedSettings: AppSettings = {
+        ...settings,
+        settingsUpdatedAt: new Date().toISOString()
+    };
+
     // Save Local first
     try {
-        localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(settings));
+        localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(stampedSettings));
     } catch (e) {
         console.error("Local save error", e);
         throw new Error("Penyimpanan penuh atau error browser. Gagal menyimpan pengaturan lokal.");
     }
 
+    // Broadcast immediate settings update to any active components
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('espm-settings-updated', { detail: stampedSettings }));
+    }
+
     // Save Cloud
-    const res = await callApi('settings', 'POST', settings, {}, 4000);
+    const res = await callApi('settings', 'POST', stampedSettings, {}, 4000);
     if (!res) {
-        enqueueSync({ id: 'app_settings', action: 'saveSettings', payload: settings });
+        enqueueSync({ id: 'app_settings', action: 'saveSettings', payload: stampedSettings });
+    } else {
+        // Clear any stale pending saveSettings if this save succeeded
+        const queue = getPendingQueue().filter(q => q.action !== 'saveSettings');
+        savePendingQueue(queue);
     }
   }
 };

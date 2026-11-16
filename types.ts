@@ -74,6 +74,9 @@ export interface LetterData {
   // Tax Management
   taxStatus?: 'paid' | 'unpaid'; // Status Pembayaran Pajak
   taxNote?: string; // Catatan Pajak
+
+  // Track fields manually unlocked & edited in InputForm
+  manualOverrides?: Partial<Record<'signatoryName1' | 'ktp1' | 'signatoryName2' | 'ktp2' | 'accountHolder' | 'accountNumber', boolean>>;
 }
 
 export interface BudgetAllocations {
@@ -143,6 +146,10 @@ export interface AppSettings {
   // Village Secretary (Sekdes)
   villageSecretary: string;
 
+  // Finance Officer / Kaur Keuangan (Pemohon 2 & Dibayar Oleh)
+  financeOfficer?: string;
+  financeOfficerNIK?: string;
+
   // Village Bank Account
   defaultAccountHolder: string;
   defaultAccountNumber: string;
@@ -155,4 +162,7 @@ export interface AppSettings {
 
   // PKA Officials List
   pkaOfficials: PkaOfficial[];
+
+  // Timestamp for reliable sync ordering
+  settingsUpdatedAt?: string;
 }

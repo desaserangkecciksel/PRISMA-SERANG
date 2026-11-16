@@ -95,7 +95,36 @@ const formatDate = (dateString: string) => {
     return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-export const generateSPM = (data: LetterData, settings: AppSettings) => {
+const resolveLetterOfficials = (data: LetterData, settings: AppSettings): LetterData => {
+  const overrides = data.manualOverrides || {};
+  return {
+    ...data,
+    signatoryName1: !overrides.signatoryName1
+      ? (settings.defaultSignatory1 || settings.headVillageName || data.signatoryName1)
+      : data.signatoryName1,
+    ktp1: !overrides.ktp1
+      ? (settings.defaultKtp1 || settings.headVillageNIK || data.ktp1)
+      : data.ktp1,
+    signatoryName2: !overrides.signatoryName2
+      ? (settings.defaultSignatory2 ?? settings.financeOfficer ?? data.signatoryName2)
+      : data.signatoryName2,
+    ktp2: !overrides.ktp2
+      ? (settings.defaultKtp2 ?? settings.financeOfficerNIK ?? data.ktp2)
+      : data.ktp2,
+    accountHolder: !overrides.accountHolder
+      ? (settings.defaultAccountHolder || data.accountHolder)
+      : data.accountHolder,
+    accountNumber: !overrides.accountNumber
+      ? (settings.defaultAccountNumber || data.accountNumber)
+      : data.accountNumber,
+    pjHeadVillage: settings.headVillageName || data.pjHeadVillage,
+    secretary: settings.villageSecretary || data.secretary,
+    financeOfficer: settings.financeOfficer || settings.defaultSignatory2 || data.financeOfficer,
+  };
+};
+
+export const generateSPM = (rawData: LetterData, settings: AppSettings) => {
+  const data = resolveLetterOfficials(rawData, settings);
   const doc = new jsPDF({ format: [PAGE_WIDTH, PAGE_HEIGHT], unit: 'mm' });
   let y = drawHeader(doc, settings);
 
@@ -285,7 +314,8 @@ export const generateSPM = (data: LetterData, settings: AppSettings) => {
   doc.save(`SPM-${data.letterNumber.replace(/\//g, '-')}.pdf`);
 };
 
-export const generateSPP = (data: LetterData, settings: AppSettings) => {
+export const generateSPP = (rawData: LetterData, settings: AppSettings) => {
+    const data = resolveLetterOfficials(rawData, settings);
     const doc = new jsPDF({ format: [PAGE_WIDTH, PAGE_HEIGHT], unit: 'mm' });
     let y = drawHeader(doc, settings);
   
@@ -463,7 +493,8 @@ export const generateSPP = (data: LetterData, settings: AppSettings) => {
     doc.save(`SPP-${data.sppNumber.replace(/\//g, '-')}.pdf`);
   };
 
-export const generateBA = (data: LetterData, settings: AppSettings) => {
+export const generateBA = (rawData: LetterData, settings: AppSettings) => {
+    const data = resolveLetterOfficials(rawData, settings);
     const doc = new jsPDF({ format: [PAGE_WIDTH, PAGE_HEIGHT], unit: 'mm' });
     let y = drawHeader(doc, settings);
   

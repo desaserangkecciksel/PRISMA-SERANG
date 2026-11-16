@@ -50,6 +50,10 @@ export const INITIAL_SETTINGS: AppSettings = {
   // Village Secretary (Integrated)
   villageSecretary: 'REZI RAHMAN DISPINDRA, S.Pd',
 
+  // Finance Officer / Kaur Keuangan
+  financeOfficer: 'SITI NURJANAH',
+  financeOfficerNIK: '3216195701790003',
+
   // Bank Account Defaults
   defaultAccountHolder: 'PEMERINTAH DESA SERANG',
   defaultAccountNumber: '0065915960101',

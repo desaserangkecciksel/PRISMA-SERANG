@@ -6,7 +6,7 @@ import { FileText, Download, FileSpreadsheet, Trash2, Printer, Archive as Archiv
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { LetterData } from '../types';
+import { LetterData, AppSettings } from '../types';
 import { SUB_FIELDS, SOURCE_FUND_OPTIONS } from '../constants';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -103,6 +103,15 @@ const Archive: React.FC<ArchiveProps> = ({ onEdit, initialTab = 'letters' }) => 
         }
     };
     fetchData();
+
+    const handleSettingsUpdated = (e: Event) => {
+        const customEvent = e as CustomEvent<AppSettings>;
+        if (customEvent.detail) {
+            setSettingsData(customEvent.detail);
+        }
+    };
+    window.addEventListener('espm-settings-updated', handleSettingsUpdated);
+    return () => window.removeEventListener('espm-settings-updated', handleSettingsUpdated);
   }, []);
 
   // Close dropdown when clicking outside

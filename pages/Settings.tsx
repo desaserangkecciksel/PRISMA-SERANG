@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StorageService } from '../services/storageService';
 import { AppSettings, BudgetAllocations, PkaOfficial } from '../types';
 import { INITIAL_SETTINGS } from '../constants';
@@ -94,20 +94,77 @@ const Settings: React.FC = () => {
   const [editingAllocationSource, setEditingAllocationSource] = useState<keyof BudgetAllocations | null>(null);
   const [allocationInputVal, setAllocationInputVal] = useState<string>('');
 
+  // Auto-sync refs for instant Data Pejabat persistence
+  const hasLoadedRef = useRef(false);
+  const officialDirtyRef = useRef(false);
+  const latestSettingsRef = useRef<AppSettings>(INITIAL_SETTINGS);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [officialSyncSaved, setOfficialSyncSaved] = useState(false);
+
+  useEffect(() => {
+      latestSettingsRef.current = settings;
+  }, [settings]);
+
   useEffect(() => {
       const loadSettings = async () => {
           try {
             const data = await StorageService.getSettings();
             if (data) {
                 setSettings(data);
+                latestSettingsRef.current = data;
                 setNewUsername(data.username || 'serang');
             }
           } catch (e) {
             console.error("Failed to load settings", e);
+          } finally {
+            hasLoadedRef.current = true;
           }
       };
       loadSettings();
+
+      return () => {
+          if (autoSaveTimerRef.current) {
+              clearTimeout(autoSaveTimerRef.current);
+          }
+          if (officialDirtyRef.current && hasLoadedRef.current) {
+              officialDirtyRef.current = false;
+              StorageService.saveSettings(latestSettingsRef.current).catch(() => {});
+          }
+      };
   }, []);
+
+  const scheduleOfficialAutoSave = (updatedSettings: AppSettings) => {
+      if (!hasLoadedRef.current) return;
+      officialDirtyRef.current = true;
+      latestSettingsRef.current = updatedSettings;
+      if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+      }
+      autoSaveTimerRef.current = setTimeout(async () => {
+          try {
+              officialDirtyRef.current = false;
+              await StorageService.saveSettings(latestSettingsRef.current);
+              setOfficialSyncSaved(true);
+              setTimeout(() => setOfficialSyncSaved(false), 2500);
+          } catch (e) {
+              console.warn("Auto-save data pejabat tertunda:", e);
+          }
+      }, 450);
+  };
+
+  const handleQuickSaveOfficial = async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      officialDirtyRef.current = false;
+      try {
+          await StorageService.saveSettings(settings);
+          setShowToast(true);
+          setTimeout(() => setShowToast(false), 3000);
+      } catch (error) {
+          alert("Gagal menyimpan Data Pejabat! Coba periksa kapasitas penyimpanan.");
+      }
+  };
 
   const handleSaveClick = (e: React.MouseEvent) => {
       e.preventDefault();
@@ -183,36 +240,76 @@ const Settings: React.FC = () => {
       }));
   };
 
+  const OFFICIAL_SYNC_FIELDS: (keyof AppSettings)[] = [
+      'headVillageName', 'headVillageNIK', 'headVillageNIP',
+      'villageSecretary', 'financeOfficer', 'financeOfficerNIK',
+      'defaultSignatory1', 'defaultKtp1', 'defaultSignatory2', 'defaultKtp2',
+      'defaultAccountHolder', 'defaultAccountNumber'
+  ];
+
   const handleInputChange = (field: keyof AppSettings, value: string) => {
-      setSettings(prev => ({ ...prev, [field]: value }));
+      setSettings(prev => {
+          const next: AppSettings = { ...prev, [field]: value };
+
+          // Keep Data Kepala Desa & Pemohon 1 synchronized
+          if (field === 'headVillageName') {
+              if (!prev.defaultSignatory1 || prev.defaultSignatory1 === prev.headVillageName || prev.defaultSignatory1 === INITIAL_SETTINGS.headVillageName) {
+                  next.defaultSignatory1 = value;
+              }
+          } else if (field === 'headVillageNIK') {
+              if (!prev.defaultKtp1 || prev.defaultKtp1 === prev.headVillageNIK || prev.defaultKtp1 === INITIAL_SETTINGS.headVillageNIK) {
+                  next.defaultKtp1 = value;
+              }
+          } else if (field === 'villageSecretary') {
+              // Sync Koordinator PKA entry in pkaOfficials
+              if (Array.isArray(prev.pkaOfficials)) {
+                  next.pkaOfficials = prev.pkaOfficials.map(pka =>
+                      pka.id === 'sekdes' || pka.position.toLowerCase().includes('koordinator')
+                          ? { ...pka, name: value }
+                          : pka
+                  );
+              }
+          } else if (field === 'financeOfficer') {
+              if (!prev.defaultSignatory2 || prev.defaultSignatory2 === prev.financeOfficer || prev.defaultSignatory2 === INITIAL_SETTINGS.financeOfficer) {
+                  next.defaultSignatory2 = value;
+              }
+          } else if (field === 'financeOfficerNIK') {
+              if (!prev.defaultKtp2 || prev.defaultKtp2 === prev.financeOfficerNIK || prev.defaultKtp2 === INITIAL_SETTINGS.defaultKtp2) {
+                  next.defaultKtp2 = value;
+              }
+          } else if (field === 'defaultSignatory2') {
+              if (!prev.financeOfficer || prev.financeOfficer === prev.defaultSignatory2 || prev.financeOfficer === INITIAL_SETTINGS.financeOfficer) {
+                  next.financeOfficer = value;
+              }
+          } else if (field === 'defaultKtp2') {
+              if (!prev.financeOfficerNIK || prev.financeOfficerNIK === prev.defaultKtp2 || prev.financeOfficerNIK === INITIAL_SETTINGS.defaultKtp2) {
+                  next.financeOfficerNIK = value;
+              }
+          }
+
+          if (OFFICIAL_SYNC_FIELDS.includes(field)) {
+              scheduleOfficialAutoSave(next);
+          }
+          return next;
+      });
   };
 
   // --- PKA Management ---
   const handleAddPka = () => {
     if (newPkaName && newPkaPosition) {
-        if (editingPkaId) {
-            // Update mode
-            setSettings(prev => ({
-                ...prev,
-                pkaOfficials: prev.pkaOfficials.map(pka => 
-                    pka.id === editingPkaId 
+        setSettings(prev => {
+            const updatedPka = editingPkaId
+                ? prev.pkaOfficials.map(pka =>
+                    pka.id === editingPkaId
                     ? { ...pka, name: newPkaName, position: newPkaPosition }
                     : pka
-                )
-            }));
-            setEditingPkaId(null);
-        } else {
-            // Add mode
-            const newPka = {
-                id: uuidv4(),
-                name: newPkaName,
-                position: newPkaPosition
-            };
-            setSettings(prev => ({
-                ...prev,
-                pkaOfficials: [...(prev.pkaOfficials || []), newPka]
-            }));
-        }
+                  )
+                : [...(prev.pkaOfficials || []), { id: uuidv4(), name: newPkaName, position: newPkaPosition }];
+            const next = { ...prev, pkaOfficials: updatedPka };
+            scheduleOfficialAutoSave(next);
+            return next;
+        });
+        if (editingPkaId) setEditingPkaId(null);
         setNewPkaName('');
         setNewPkaPosition('');
     }
@@ -231,10 +328,14 @@ const Settings: React.FC = () => {
   };
 
   const handleRemovePka = (id: string) => {
-      setSettings(prev => ({
-          ...prev,
-          pkaOfficials: prev.pkaOfficials.filter(pka => pka.id !== id)
-      }));
+      setSettings(prev => {
+          const next = {
+              ...prev,
+              pkaOfficials: prev.pkaOfficials.filter(pka => pka.id !== id)
+          };
+          scheduleOfficialAutoSave(next);
+          return next;
+      });
       // Reset edit state if deleting the item currently being edited
       if (editingPkaId === id) {
           handleCancelPka();
@@ -684,17 +785,40 @@ const Settings: React.FC = () => {
         case 'official':
             return (
                 <div className="space-y-6 animate-fade-in">
-                    <div className="border-b border-slate-100 dark:border-slate-700 pb-4 mb-4">
-                        <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Data Pejabat Desa</h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Konfigurasi data Kepala Desa, Sekretaris Desa dan daftar Pelaksana Kegiatan Anggaran (PKA).</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-4 mb-4 gap-3">
+                        <div>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Data Pejabat Desa</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                Perubahan di sini otomatis langsung memperbarui kunci Pemohon & Penandatangan di Input Surat serta dokumen cetak.
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            {officialSyncSaved && (
+                                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-fade-in">
+                                    <CheckCircle size={14} /> Tersinkron Otomatis
+                                </span>
+                            )}
+                            <button
+                                type="button"
+                                onClick={handleQuickSaveOfficial}
+                                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-xs shadow-md flex items-center gap-1.5 transition-colors"
+                            >
+                                <Save size={15} /> Simpan Data Pejabat
+                            </button>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 gap-6">
                         {/* KEPALA DESA */}
                         <div className="bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
-                             <div className="flex items-center mb-4 text-slate-800 dark:text-slate-100">
-                                 <User size={24} className="mr-3 text-teal-600 dark:text-teal-400" />
-                                 <h3 className="text-lg font-bold">Data Kepala Desa</h3>
+                             <div className="flex items-center justify-between mb-4 text-slate-800 dark:text-slate-100">
+                                 <div className="flex items-center">
+                                     <User size={24} className="mr-3 text-teal-600 dark:text-teal-400" />
+                                     <div>
+                                         <h3 className="text-lg font-bold">Data Kepala Desa (Pemohon 1)</h3>
+                                         <p className="text-[11px] text-teal-600 dark:text-teal-400 font-medium">Tersinkron otomatis ke Nama (1), No. KTP (1) & Kuasa Pengguna Anggaran</p>
+                                     </div>
+                                 </div>
                             </div>
                             <div className="space-y-4">
                                 <div>
@@ -708,7 +832,7 @@ const Settings: React.FC = () => {
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
-                                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">NIK KTP</label>
+                                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">NIK KTP Kepala Desa</label>
                                         <input 
                                             type="text" 
                                             className="w-full border-slate-300 dark:border-slate-600 rounded-xl shadow-sm p-3 border focus:ring-2 focus:ring-teal-500 font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-white" 
@@ -754,6 +878,70 @@ const Settings: React.FC = () => {
                                         <Info size={12} className="mr-1"/> 
                                         Nama ini akan otomatis muncul sebagai Koordinator di Daftar PKA dan penandatangan surat.
                                     </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* KAUR KEUANGAN / PEMOHON 2 */}
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                            <div className="flex items-center mb-4 text-slate-800 dark:text-slate-100">
+                                <PenTool size={24} className="mr-3 text-emerald-600 dark:text-emerald-400" />
+                                <div>
+                                    <h3 className="text-lg font-bold">Data Kaur Keuangan / Bendahara (Pemohon 2)</h3>
+                                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Tersinkron otomatis ke Nama (2), No. KTP (2) di Input Surat & Penandatangan Kaur Keuangan (SPP)</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Nama Lengkap Kaur Keuangan (Pemohon 2)</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full border-slate-300 dark:border-slate-600 rounded-xl shadow-sm p-3 border focus:ring-2 focus:ring-emerald-500 font-bold bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white" 
+                                        value={settings.financeOfficer ?? settings.defaultSignatory2 ?? ''} 
+                                        onChange={(e) => handleInputChange('financeOfficer', e.target.value)}
+                                        placeholder="Nama Kaur Keuangan..."
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">NIK KTP Kaur Keuangan (KTP 2)</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full border-slate-300 dark:border-slate-600 rounded-xl shadow-sm p-3 border focus:ring-2 focus:ring-emerald-500 font-mono bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white" 
+                                        value={settings.financeOfficerNIK ?? settings.defaultKtp2 ?? ''} 
+                                        onChange={(e) => handleInputChange('financeOfficerNIK', e.target.value)}
+                                        placeholder="NIK KTP..."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* REKENING KAS DESA (DEFAULT TERKUNCI DI INPUT SURAT) */}
+                        <div className="bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
+                            <div className="flex items-center mb-4 text-slate-800 dark:text-slate-100">
+                                <Landmark size={24} className="mr-3 text-sky-600 dark:text-sky-400" />
+                                <div>
+                                    <h3 className="text-lg font-bold">Rekening Kas Desa (Default Input Surat)</h3>
+                                    <p className="text-[11px] text-sky-600 dark:text-sky-400 font-medium">Tersinkron otomatis ke kolom Atas Nama Rekening & Nomor Rekening pada Input Surat</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Atas Nama Rekening</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full border-slate-300 dark:border-slate-600 rounded-xl shadow-sm p-3 border focus:ring-2 focus:ring-sky-500 font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-white" 
+                                        value={settings.defaultAccountHolder || ''} 
+                                        onChange={(e) => handleInputChange('defaultAccountHolder', e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Nomor Rekening</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full border-slate-300 dark:border-slate-600 rounded-xl shadow-sm p-3 border focus:ring-2 focus:ring-sky-500 font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-white" 
+                                        value={settings.defaultAccountNumber || ''} 
+                                        onChange={(e) => handleInputChange('defaultAccountNumber', e.target.value)}
+                                    />
                                 </div>
                             </div>
                         </div>

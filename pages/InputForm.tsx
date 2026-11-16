@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Trash2, Check, Calculator, UploadCloud, Camera, FileCheck, AlertTriangle, Plus, X, ArrowLeft, RefreshCw, Lock, Loader2, Printer, FileText, ArrowRight } from 'lucide-react';
+import { Save, Trash2, Check, Calculator, UploadCloud, Camera, FileCheck, AlertTriangle, Plus, X, ArrowLeft, RefreshCw, Lock, Unlock, RotateCcw, Loader2, Printer, FileText, ArrowRight } from 'lucide-react';
 import { LetterData, TransactionItem, Employee, AppSettings } from '../types';
 import { INITIAL_FORM_DATA, INITIAL_SETTINGS, SUB_FIELDS, SOURCE_FUND_OPTIONS } from '../constants';
 import { StorageService } from '../services/storageService';
@@ -73,6 +73,46 @@ interface InputFormProps {
     onNavigate?: (page: string) => void;
 }
 
+type LockableField = 'signatoryName1' | 'ktp1' | 'signatoryName2' | 'ktp2' | 'accountHolder' | 'accountNumber';
+
+const LOCKED_DEFAULT_STATE: Record<LockableField, boolean> = {
+    signatoryName1: false,
+    ktp1: false,
+    signatoryName2: false,
+    ktp2: false,
+    accountHolder: false,
+    accountNumber: false,
+};
+
+const applySettingsToForm = (sett: AppSettings, baseData: LetterData, forceResetAll: boolean = false): LetterData => {
+    const overrides = forceResetAll ? {} : (baseData.manualOverrides || {});
+    return {
+        ...baseData,
+        accountHolder: !overrides.accountHolder
+            ? (sett.defaultAccountHolder || INITIAL_FORM_DATA.accountHolder)
+            : baseData.accountHolder,
+        accountNumber: !overrides.accountNumber
+            ? (sett.defaultAccountNumber || INITIAL_FORM_DATA.accountNumber)
+            : baseData.accountNumber,
+        signatoryName1: !overrides.signatoryName1
+            ? (sett.defaultSignatory1 || sett.headVillageName || INITIAL_FORM_DATA.signatoryName1)
+            : baseData.signatoryName1,
+        ktp1: !overrides.ktp1
+            ? (sett.defaultKtp1 || sett.headVillageNIK || INITIAL_FORM_DATA.ktp1)
+            : baseData.ktp1,
+        signatoryName2: !overrides.signatoryName2
+            ? (sett.defaultSignatory2 ?? sett.financeOfficer ?? INITIAL_FORM_DATA.signatoryName2)
+            : baseData.signatoryName2,
+        ktp2: !overrides.ktp2
+            ? (sett.defaultKtp2 ?? sett.financeOfficerNIK ?? INITIAL_FORM_DATA.ktp2)
+            : baseData.ktp2,
+        secretary: sett.villageSecretary || INITIAL_FORM_DATA.secretary,
+        pjHeadVillage: sett.headVillageName || INITIAL_FORM_DATA.pjHeadVillage,
+        financeOfficer: sett.financeOfficer || sett.defaultSignatory2 || INITIAL_FORM_DATA.financeOfficer,
+        manualOverrides: forceResetAll ? {} : baseData.manualOverrides,
+    };
+};
+
 const InputForm: React.FC<InputFormProps> = ({ initialData, onBack, onNavigate }) => {
   const [formData, setFormData] = useState<LetterData>(initialData || INITIAL_FORM_DATA);
   const [fileError, setFileError] = useState<string>('');
@@ -80,6 +120,8 @@ const InputForm: React.FC<InputFormProps> = ({ initialData, onBack, onNavigate }
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings>(INITIAL_SETTINGS);
+  const [unlockedFields, setUnlockedFields] = useState<Record<LockableField, boolean>>(LOCKED_DEFAULT_STATE);
+  const [syncNotice, setSyncNotice] = useState(false);
   
   // Modal State
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -100,34 +142,26 @@ const InputForm: React.FC<InputFormProps> = ({ initialData, onBack, onNavigate }
   const currentMonth = ROMAN_MONTHS[new Date().getMonth()];
 
   useEffect(() => {
-    // Load employees for autocomplete
+    let isMounted = true;
+    setUnlockedFields(LOCKED_DEFAULT_STATE);
+
+    // Load employees and latest settings
     const init = async () => {
         const emp = await StorageService.getEmployees();
         const sett = await StorageService.getSettings();
+        if (!isMounted) return;
+
         setEmployees(emp);
         setAppSettings(sett);
         
-        // If not editing, initialize defaults from settings
         if (!initialData) {
             const autoSPM = await StorageService.getNextSPMNumber(baseYear);
             const autoSPP = generateSPPNumber();
             const today = new Date().toISOString().split('T')[0];
+            if (!isMounted) return;
             
             setFormData(prev => ({
-                ...prev,
-                // Override account details from settings
-                accountHolder: sett.defaultAccountHolder || INITIAL_FORM_DATA.accountHolder,
-                accountNumber: sett.defaultAccountNumber || INITIAL_FORM_DATA.accountNumber,
-                // Override Signatories from settings
-                signatoryName1: sett.defaultSignatory1 || INITIAL_FORM_DATA.signatoryName1,
-                ktp1: sett.defaultKtp1 || INITIAL_FORM_DATA.ktp1,
-                signatoryName2: sett.defaultSignatory2 || INITIAL_FORM_DATA.signatoryName2,
-                ktp2: sett.defaultKtp2 || INITIAL_FORM_DATA.ktp2,
-                // Override Secretary for integrated signing
-                secretary: sett.villageSecretary || INITIAL_FORM_DATA.secretary,
-                // Override Head Village from settings (Integrated)
-                pjHeadVillage: sett.headVillageName || INITIAL_FORM_DATA.pjHeadVillage,
-                
+                ...applySettingsToForm(sett, prev),
                 letterNumber: autoSPM,
                 sppNumber: autoSPP,
                 requestLetterNumber: autoSPP,
@@ -135,10 +169,39 @@ const InputForm: React.FC<InputFormProps> = ({ initialData, onBack, onNavigate }
                 date: today
             }));
         } else {
-             setFormData(initialData);
+            setFormData(applySettingsToForm(sett, initialData));
         }
     };
     init();
+
+    // Immediately sync when Pengaturan Data Pejabat is updated
+    const handleSettingsUpdated = (e: Event) => {
+        const customEvent = e as CustomEvent<AppSettings>;
+        const updatedSett = customEvent.detail;
+        if (updatedSett && isMounted) {
+            setAppSettings(updatedSett);
+            setFormData(prev => applySettingsToForm(updatedSett, prev));
+        }
+    };
+
+    const handleWindowFocus = async () => {
+        try {
+            const latestSett = await StorageService.getSettings();
+            if (isMounted) {
+                setAppSettings(latestSett);
+                setFormData(prev => applySettingsToForm(latestSett, prev));
+            }
+        } catch {}
+    };
+
+    window.addEventListener('espm-settings-updated', handleSettingsUpdated);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+        isMounted = false;
+        window.removeEventListener('espm-settings-updated', handleSettingsUpdated);
+        window.removeEventListener('focus', handleWindowFocus);
+    };
   }, [initialData]);
 
   const generateSPPNumber = () => {
@@ -168,6 +231,44 @@ const InputForm: React.FC<InputFormProps> = ({ initialData, onBack, onNavigate }
     } else {
         setFormData(prev => ({ ...prev, [field]: value }));
     }
+  };
+
+  const toggleFieldLock = (field: LockableField) => {
+    setUnlockedFields(prev => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  const allFieldsUnlocked = Object.values(unlockedFields).every(Boolean);
+
+  const toggleAllLocks = () => {
+    const nextVal = !allFieldsUnlocked;
+    setUnlockedFields({
+        signatoryName1: nextVal,
+        ktp1: nextVal,
+        signatoryName2: nextVal,
+        ktp2: nextVal,
+        accountHolder: nextVal,
+        accountNumber: nextVal,
+    });
+  };
+
+  const handleLockableInputChange = (field: LockableField, value: string) => {
+    setFormData(prev => ({
+        ...prev,
+        [field]: value,
+        manualOverrides: {
+            ...(prev.manualOverrides || {}),
+            [field]: true
+        }
+    }));
+  };
+
+  const handleSyncFromSettings = async () => {
+    const latestSett = await StorageService.getSettings();
+    setAppSettings(latestSett);
+    setFormData(prev => applySettingsToForm(latestSett, prev, true));
+    setUnlockedFields(LOCKED_DEFAULT_STATE);
+    setSyncNotice(true);
+    setTimeout(() => setSyncNotice(false), 2500);
   };
   
   // File Handling with Vercel Blob
@@ -605,40 +706,108 @@ const InputForm: React.FC<InputFormProps> = ({ initialData, onBack, onNavigate }
             </section>
 
              <section className="space-y-4">
-                <h3 className="text-lg font-bold text-teal-700 dark:text-teal-400 border-b-2 border-teal-100 dark:border-teal-900/30 pb-2">Pemohon / Penandatangan</h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-teal-100 dark:border-teal-900/30 pb-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-bold text-teal-700 dark:text-teal-400">Pemohon / Penandatangan</h3>
+                        <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/80 dark:border-teal-800">
+                            Tersinkron Data Pejabat
+                        </span>
+                        {syncNotice && (
+                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1 animate-fade-in">
+                                <Check size={12} /> Disesuaikan dengan Data Pejabat terbaru
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={toggleAllLocks}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                allFieldsUnlocked
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100'
+                                    : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100'
+                            }`}
+                            title={allFieldsUnlocked ? 'Kunci semua kolom' : 'Buka semua kunci agar bisa diedit saat penginputan'}
+                        >
+                            {allFieldsUnlocked ? <Lock size={13} /> : <Unlock size={13} />}
+                            {allFieldsUnlocked ? 'Kunci Semua' : 'Buka Semua Kunci'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleSyncFromSettings}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 hover:bg-teal-50 dark:hover:bg-teal-900/40 hover:text-teal-700 dark:hover:text-teal-300 border border-slate-200 dark:border-slate-600 transition-all"
+                            title="Ambil ulang data pejabat terbaru dari Pengaturan & kunci kembali"
+                        >
+                            <RotateCcw size={13} />
+                            Sesuaikan Pejabat Terbaru
+                        </button>
+                    </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label className="block text-sm font-bold text-black dark:text-slate-300 mb-1 flex items-center">Nama (1) <Lock size={14} className="ml-1 text-slate-400"/></label>
-                        <input type="text" className="w-full border-slate-300 dark:border-slate-600 rounded-lg shadow-sm focus:ring-0 p-2.5 border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium cursor-not-allowed" 
-                            value={formData.signatoryName1} readOnly />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-bold text-black dark:text-slate-300 mb-1 flex items-center">No. KTP (1) <Lock size={14} className="ml-1 text-slate-400"/></label>
-                        <input type="text" className="w-full border-slate-300 dark:border-slate-600 rounded-lg shadow-sm focus:ring-0 p-2.5 border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium cursor-not-allowed" 
-                            value={formData.ktp1} readOnly />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-bold text-black dark:text-slate-300 mb-1 flex items-center">Nama (2) <Lock size={14} className="ml-1 text-slate-400"/></label>
-                        <input type="text" className="w-full border-slate-300 dark:border-slate-600 rounded-lg shadow-sm focus:ring-0 p-2.5 border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium cursor-not-allowed" 
-                            placeholder="Opsional"
-                            value={formData.signatoryName2 || ''} readOnly />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-bold text-black dark:text-slate-300 mb-1 flex items-center">No. KTP (2) <Lock size={14} className="ml-1 text-slate-400"/></label>
-                        <input type="text" className="w-full border-slate-300 dark:border-slate-600 rounded-lg shadow-sm focus:ring-0 p-2.5 border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium cursor-not-allowed" 
-                            placeholder="Opsional"
-                            value={formData.ktp2 || ''} readOnly />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-bold text-black dark:text-slate-300 mb-1 flex items-center">Atas Nama Rekening <Lock size={14} className="ml-1 text-slate-400"/></label>
-                        <input type="text" className="w-full border-slate-300 dark:border-slate-600 rounded-lg shadow-sm focus:ring-0 p-2.5 border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium cursor-not-allowed" 
-                            value={formData.accountHolder} readOnly />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-bold text-black dark:text-slate-300 mb-1 flex items-center">Nomor Rekening <Lock size={14} className="ml-1 text-slate-400"/></label>
-                        <input type="text" className="w-full border-slate-300 dark:border-slate-600 rounded-lg shadow-sm focus:ring-0 p-2.5 border bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium cursor-not-allowed" 
-                            value={formData.accountNumber} readOnly />
-                    </div>
+                    {([
+                        { field: 'signatoryName1' as LockableField, label: 'Nama (1)', placeholder: 'Nama Pemohon 1' },
+                        { field: 'ktp1' as LockableField, label: 'No. KTP (1)', placeholder: 'NIK KTP Pemohon 1' },
+                        { field: 'signatoryName2' as LockableField, label: 'Nama (2)', placeholder: 'Opsional' },
+                        { field: 'ktp2' as LockableField, label: 'No. KTP (2)', placeholder: 'Opsional' },
+                        { field: 'accountHolder' as LockableField, label: 'Atas Nama Rekening', placeholder: 'Nama Pemilik Rekening' },
+                        { field: 'accountNumber' as LockableField, label: 'Nomor Rekening', placeholder: 'Nomor Rekening Desa' },
+                    ]).map(({ field, label, placeholder }) => {
+                        const isUnlocked = unlockedFields[field];
+                        const isManual = Boolean(formData.manualOverrides?.[field]);
+                        return (
+                            <div key={field}>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="text-sm font-bold text-black dark:text-slate-300 flex items-center gap-2">
+                                        <span>{label}</span>
+                                        {isManual && (
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                                                Edit Manual
+                                            </span>
+                                        )}
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleFieldLock(field)}
+                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
+                                            isUnlocked
+                                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
+                                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:bg-amber-50 dark:hover:bg-amber-950/50 hover:text-amber-700 dark:hover:text-amber-300 hover:border-amber-300'
+                                        }`}
+                                        title={isUnlocked ? `Kunci kembali ${label}` : `Buka kunci ${label} untuk edit saat penginputan`}
+                                    >
+                                        {isUnlocked ? <Unlock size={12} /> : <Lock size={12} />}
+                                        <span>{isUnlocked ? 'Terbuka' : 'Terkunci'}</span>
+                                    </button>
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        readOnly={!isUnlocked}
+                                        placeholder={placeholder}
+                                        value={(formData[field] as string) || ''}
+                                        onChange={e => handleLockableInputChange(field, e.target.value)}
+                                        className={`w-full rounded-lg shadow-sm p-2.5 pr-10 border font-medium transition-all ${
+                                            isUnlocked
+                                                ? 'border-teal-400 dark:border-teal-500 bg-white dark:bg-slate-900 text-black dark:text-white focus:ring-2 focus:ring-teal-500 focus:border-transparent'
+                                                : 'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 focus:ring-0 cursor-default'
+                                        }`}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleFieldLock(field)}
+                                        className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors ${
+                                            isUnlocked
+                                                ? 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40'
+                                                : 'text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-200/70 dark:hover:bg-slate-600'
+                                        }`}
+                                        title={isUnlocked ? 'Kunci kolom' : 'Buka kunci kolom'}
+                                    >
+                                        {isUnlocked ? <Unlock size={15} /> : <Lock size={15} />}
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </section>
 
